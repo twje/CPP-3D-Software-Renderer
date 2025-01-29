@@ -4,10 +4,10 @@
 #include <SDL.h>
 
 //------------------------------------------------------------------------------
-class SDLSystem
+class SDLWindow
 {
 public:
-    explicit SDLSystem(uint32_t flags = SDL_INIT_VIDEO)
+    explicit SDLWindow(uint32_t flags = SDL_INIT_VIDEO)
         : mWindow(nullptr)
 		, mRenderer(nullptr)
         , mInitialized(false)
@@ -18,7 +18,7 @@ public:
         }
     }
 
-    ~SDLSystem()
+    ~SDLWindow()
     {
 		if (mRenderer)
 		{
@@ -45,8 +45,8 @@ public:
 	SDL_Renderer* GetSDLRenderer() { return mRenderer; }
 
     // Delete copy and assignment to prevent accidental re-initialization
-    SDLSystem(const SDLSystem&) = delete;
-    SDLSystem& operator=(const SDLSystem&) = delete;
+    SDLWindow(const SDLWindow&) = delete;
+    SDLWindow& operator=(const SDLWindow&) = delete;
 
 private:
     bool InitializeSDL(uint32_t flags)
@@ -101,13 +101,81 @@ private:
 };
 
 //------------------------------------------------------------------------------
+class ColorBuffer
+{
+public:
+    ColorBuffer(SDL_Renderer* renderer, uint32_t width, uint32_t height)
+        : mRenderer(renderer)
+        , mWidth(width)
+        , mHeight(height)
+    {
+        mBuffer = new uint32_t[mWidth * mHeight];
+
+        // Create an SDL texture for rendering
+        mTexture = SDL_CreateTexture(mRenderer,
+            SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,
+            mWidth,
+            mHeight);
+
+        if (!mTexture)
+        {
+            SDL_Log("Failed to create texture: %s", SDL_GetError());
+        }
+    }
+
+    ~ColorBuffer()
+    {
+        delete[] mBuffer;
+        if (mTexture)
+        {
+            SDL_DestroyTexture(mTexture);
+        }
+    }
+
+    void Clear(uint32_t color)
+    {
+        std::fill(mBuffer, mBuffer + (mWidth * mHeight), color);
+    }
+
+    void SetPixel(uint32_t x, uint32_t y, uint32_t color)
+    {
+        if (x < mWidth && y < mHeight)
+        {
+            mBuffer[y * mWidth + x] = color;
+        }
+    }
+
+    void UpdateTexture()
+    {
+        SDL_UpdateTexture(mTexture, nullptr, mBuffer, mWidth * sizeof(uint32_t));
+    }
+
+    void Render()
+    {
+        SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
+    }
+
+    uint32_t GetWidth() const { return mWidth; }
+    uint32_t GetHeight() const { return mHeight; }
+
+private:
+    SDL_Renderer* mRenderer;
+    uint32_t mWidth;
+    uint32_t mHeight;
+    uint32_t* mBuffer;
+    SDL_Texture* mTexture;  
+};
+
+//------------------------------------------------------------------------------
 class Application
 {
 public:
     Application() 
-        : mSDLSystem()
+        : mSDLWindow()
+		, mColorBuffer(mSDLWindow.GetSDLRenderer(), 800, 600)
     {
-        if (!mSDLSystem.IsValid())
+        if (!mSDLWindow.IsValid())
         {
             std::cerr << "Application startup failed: SDL could not be initialized." << std::endl;
             return;
@@ -116,11 +184,11 @@ public:
         std::cout << "Application created successfully." << std::endl;
     }
 
-    bool IsValid() const { return mSDLSystem.IsValid(); }
+    bool IsValid() const { return mSDLWindow.IsValid(); }
 
     void Run()
     {
-        if (!mSDLSystem.IsValid())
+        if (!mSDLWindow.IsValid())
         {
             std::cerr << "Cannot run application: SDL initialization failed." << std::endl;
             return;
@@ -144,14 +212,24 @@ public:
 				}
             }
 
-			SDL_SetRenderDrawColor(mSDLSystem.GetSDLRenderer(), 255, 0, 0, 255);
-			SDL_RenderClear(mSDLSystem.GetSDLRenderer());
-			SDL_RenderPresent(mSDLSystem.GetSDLRenderer());
+            // Update buffer
+            mColorBuffer.Clear(0xFF0000FF);
+			for (uint32_t i = 0; i < 800; ++i)
+			{
+				mColorBuffer.SetPixel(i, 300, 0xFFFF0000);
+			}            
+            mColorBuffer.UpdateTexture();
+
+			SDL_SetRenderDrawColor(mSDLWindow.GetSDLRenderer(), 0, 0, 0, 255);
+			SDL_RenderClear(mSDLWindow.GetSDLRenderer());
+            mColorBuffer.Render();
+			SDL_RenderPresent(mSDLWindow.GetSDLRenderer());
         }
     }
 
 private:
-    SDLSystem mSDLSystem;
+    SDLWindow mSDLWindow;
+    ColorBuffer mColorBuffer;
 };
 
 //------------------------------------------------------------------------------
