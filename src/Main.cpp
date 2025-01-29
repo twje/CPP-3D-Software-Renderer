@@ -8,7 +8,7 @@ struct AppConfig
 {
     uint32_t mWindowWidth = 800;
     uint32_t mWindowHeight = 600;
-    std::string windowTitle = "SDL Application";
+    std::string mWindowTitle = "SDL Application";
 };
 
 //------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ private:
     bool CreateWindow(const AppConfig& config)
     {
         mWindow = SDL_CreateWindow(
-            config.windowTitle.c_str(),
+            config.mWindowTitle.c_str(),
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             config.mWindowWidth,
@@ -108,47 +108,42 @@ private:
 };
 
 //------------------------------------------------------------------------------
+// RAII Deleter for SDL_Texture
+struct SDLTextureDeleter 
+{
+    void operator()(SDL_Texture* texture) const 
+    {
+        if (texture) SDL_DestroyTexture(texture);
+    }
+};
+
+//------------------------------------------------------------------------------
 class ColorBuffer
 {
 public:
     ColorBuffer(SDL_Renderer* renderer, const AppConfig& config)
-        : mRenderer(renderer)
-        , mWidth(config.mWindowWidth)
-        , mHeight(config.mWindowHeight)
-        , mInitialized(false)
-    {
-        mBuffer = new uint32_t[mWidth * mHeight];
-
-        // Create an SDL texture for rendering
-        mTexture = SDL_CreateTexture(mRenderer,
+        : mRenderer(renderer),
+        mWidth(config.mWindowWidth),
+        mHeight(config.mWindowHeight),
+        mBuffer(mWidth* mHeight, 0)
+    {        
+        mTexture.reset(SDL_CreateTexture(mRenderer,
             SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,
             mWidth,
-            mHeight);
+            mHeight));
 
         if (!mTexture)
         {
             SDL_Log("Failed to create texture: %s", SDL_GetError());
-            return;
-        }
-
-        mInitialized = true;
-    }
-
-    ~ColorBuffer()
-    {
-        delete[] mBuffer;
-        if (mTexture)
-        {
-            SDL_DestroyTexture(mTexture);
         }
     }
 
-    bool IsValid() const { return mInitialized; }
+    bool IsValid() const { return mTexture != nullptr; }
 
     void Clear(uint32_t color)
     {
-        std::fill(mBuffer, mBuffer + (mWidth * mHeight), color);
+        std::fill(mBuffer.begin(), mBuffer.end(), color);
     }
 
     void SetPixel(uint32_t x, uint32_t y, uint32_t color)
@@ -161,21 +156,26 @@ public:
 
     void UpdateTexture()
     {
-        SDL_UpdateTexture(mTexture, nullptr, mBuffer, mWidth * sizeof(uint32_t));
+        if (mTexture)
+        {
+            SDL_UpdateTexture(mTexture.get(), nullptr, mBuffer.data(), mWidth * sizeof(uint32_t));
+        }
     }
 
     void Render()
     {
-        SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
+        if (mTexture)
+        {
+            SDL_RenderCopy(mRenderer, mTexture.get(), nullptr, nullptr);
+        }
     }
 
 private:
     SDL_Renderer* mRenderer;
     uint32_t mWidth;
     uint32_t mHeight;
-    uint32_t* mBuffer;
-    SDL_Texture* mTexture;
-    bool mInitialized;
+    std::vector<uint32_t> mBuffer;
+    std::unique_ptr<SDL_Texture, SDLTextureDeleter> mTexture;
 };
 
 //------------------------------------------------------------------------------
@@ -287,7 +287,7 @@ int SDL_main(int argc, char* argv[])
     AppConfig config;
     config.mWindowWidth = 800;
     config.mWindowHeight = 600;
-    config.windowTitle = "My Custom SDL App";
+    config.mWindowTitle = "My Custom SDL App";
 
     Application app(config);
     if (!app.IsValid())
