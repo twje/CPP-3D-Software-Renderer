@@ -115,6 +115,7 @@ public:
         : mRenderer(renderer)
         , mWidth(config.mWindowWidth)
         , mHeight(config.mWindowHeight)
+        , mInitialized(false)
     {
         mBuffer = new uint32_t[mWidth * mHeight];
 
@@ -128,7 +129,10 @@ public:
         if (!mTexture)
         {
             SDL_Log("Failed to create texture: %s", SDL_GetError());
+            return;
         }
+
+        mInitialized = true;
     }
 
     ~ColorBuffer()
@@ -140,13 +144,17 @@ public:
         }
     }
 
+    bool IsValid() const { return mInitialized; }
+
     void Clear(uint32_t color)
     {
+        if (!mInitialized) return;
         std::fill(mBuffer, mBuffer + (mWidth * mHeight), color);
     }
 
     void SetPixel(uint32_t x, uint32_t y, uint32_t color)
     {
+        if (!mInitialized) return;
         if (x < mWidth && y < mHeight)
         {
             mBuffer[y * mWidth + x] = color;
@@ -155,11 +163,13 @@ public:
 
     void UpdateTexture()
     {
+        if (!mInitialized) return;
         SDL_UpdateTexture(mTexture, nullptr, mBuffer, mWidth * sizeof(uint32_t));
     }
 
     void Render()
     {
+        if (!mInitialized) return;
         SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
     }
 
@@ -172,6 +182,7 @@ private:
     uint32_t mHeight;
     uint32_t* mBuffer;
     SDL_Texture* mTexture;
+    bool mInitialized;
 };
 
 //------------------------------------------------------------------------------
@@ -192,11 +203,14 @@ public:
         std::cout << "Application created successfully." << std::endl;
     }
 
-    bool IsValid() const { return mSDLWindow.IsValid(); }
+    bool IsValid() const 
+    { 
+        return mSDLWindow.IsValid() && mColorBuffer.IsValid(); 
+    }
 
     void Run()
     {
-        if (!mSDLWindow.IsValid())
+        if (!IsValid())
         {
             std::cerr << "Cannot run application: SDL initialization failed." << std::endl;
             return;
@@ -222,10 +236,10 @@ public:
 
             // Update buffer
             mColorBuffer.Clear(0xFF0000FF);
-			for (uint32_t i = 0; i < 800; ++i)
+			for (uint32_t i = 0; i < mConfig.mWindowWidth; ++i)
 			{
 				mColorBuffer.SetPixel(i, 300, 0xFFFF0000);
-			}            
+			}
             mColorBuffer.UpdateTexture();
 
 			SDL_SetRenderDrawColor(mSDLWindow.GetSDLRenderer(), 0, 0, 0, 255);
