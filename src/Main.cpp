@@ -12,6 +12,24 @@ struct AppConfig
 };
 
 //------------------------------------------------------------------------------
+struct SDLWindowDeleter 
+{
+    void operator()(SDL_Window* window) const 
+    {
+        if (window) SDL_DestroyWindow(window);
+    }
+};
+
+//------------------------------------------------------------------------------
+struct SDLRendererDeleter 
+{
+    void operator()(SDL_Renderer* renderer) const 
+    {
+        if (renderer) SDL_DestroyRenderer(renderer);
+    }
+};
+
+//------------------------------------------------------------------------------
 class SDLWindow
 {
 public:
@@ -28,22 +46,10 @@ public:
 
     bool IsValid() const { return mInitialized && mWindow && mRenderer; }
 
-    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
+    SDL_Renderer* GetSDLRenderer() { return mRenderer.get(); }
 
     ~SDLWindow()
     {
-        if (mRenderer)
-        {
-            SDL_DestroyRenderer(mRenderer);
-            std::cout << "SDL Renderer destroyed successfully." << std::endl;
-        }
-
-        if (mWindow)
-        {
-            SDL_DestroyWindow(mWindow);
-            std::cout << "SDL Window destroyed successfully." << std::endl;
-        }
-
         if (mInitialized)
         {
             SDL_Quit();
@@ -71,13 +77,13 @@ private:
 
     bool CreateWindow(const AppConfig& config)
     {
-        mWindow = SDL_CreateWindow(
+        mWindow.reset(SDL_CreateWindow(
             config.mWindowTitle.c_str(),
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             config.mWindowWidth,
             config.mWindowHeight,
-            SDL_WINDOW_SHOWN);
+            SDL_WINDOW_SHOWN));
 
         if (mWindow)
         {
@@ -91,7 +97,7 @@ private:
 
     bool CreateRenderer()
     {
-        mRenderer = SDL_CreateRenderer(mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        mRenderer.reset(SDL_CreateRenderer(mWindow.get(), -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));
         if (mRenderer)
         {
             std::cout << "SDL Renderer created successfully." << std::endl;
@@ -102,8 +108,8 @@ private:
         return false;
     }
 
-    SDL_Window* mWindow;
-    SDL_Renderer* mRenderer;
+    std::unique_ptr<SDL_Window, SDLWindowDeleter> mWindow;
+    std::unique_ptr<SDL_Renderer, SDLRendererDeleter> mRenderer;
     bool mInitialized;
 };
 
@@ -216,15 +222,8 @@ public:
         : mConfig(config)
         , mSDLWindow(config)
         , mPixelRenderer(mSDLWindow.GetSDLRenderer(), config)
-    {
-        if (!IsValid())
-        {
-            std::cerr << "Application startup failed: SDL could not be initialized." << std::endl;
-            return;
-        }
-
-        std::cout << "Application created successfully." << std::endl;
-    }
+        , mRunning(IsValid())
+    { }
 
     bool IsValid() const
     {
@@ -234,17 +233,15 @@ public:
     void Run()
     {
         if (!IsValid())
-        {
-            std::cerr << "Cannot run application: SDL initialization failed." << std::endl;
+        {            
             return;
         }
 
         SDL_Renderer* renderer = mSDLWindow.GetSDLRenderer();
-
-        bool running = true;
-        while (running)
+        
+        while (mRunning)
         {
-            running = ProcessEvents();
+            ProcessEvents();
             OnUpdate();
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -266,28 +263,30 @@ protected:
     virtual void OnRender(PixelRenderer& pixelRenderer) { (void)pixelRenderer; }
 
 private:
-    bool ProcessEvents()
+    void ProcessEvents()
     {
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
             if (event.type == SDL_QUIT)
             {
-                return false;
+                mRunning = false;
+                return;
             }
             else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             {
-                return false;
+                mRunning = false;
+                return;
             }
 
             OnEvent(event);  // Delegate to virtual method
-        }
-        return true;
+        }        
     }
 
     AppConfig mConfig;
     SDLWindow mSDLWindow;
     PixelRenderer mPixelRenderer;
+    bool mRunning;
 };
 
 //------------------------------------------------------------------------------
