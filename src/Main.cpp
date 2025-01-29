@@ -148,13 +148,11 @@ public:
 
     void Clear(uint32_t color)
     {
-        if (!mInitialized) return;
         std::fill(mBuffer, mBuffer + (mWidth * mHeight), color);
     }
 
     void SetPixel(uint32_t x, uint32_t y, uint32_t color)
     {
-        if (!mInitialized) return;
         if (x < mWidth && y < mHeight)
         {
             mBuffer[y * mWidth + x] = color;
@@ -163,18 +161,13 @@ public:
 
     void UpdateTexture()
     {
-        if (!mInitialized) return;
         SDL_UpdateTexture(mTexture, nullptr, mBuffer, mWidth * sizeof(uint32_t));
     }
 
     void Render()
     {
-        if (!mInitialized) return;
         SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
     }
-
-    uint32_t GetWidth() const { return mWidth; }
-    uint32_t GetHeight() const { return mHeight; }
 
 private:
     SDL_Renderer* mRenderer;
@@ -186,13 +179,43 @@ private:
 };
 
 //------------------------------------------------------------------------------
+class PixelRenderer
+{
+public:
+    PixelRenderer(SDL_Renderer* renderer, const AppConfig& config)
+        : mColorBuffer(renderer, config)
+    { }
+
+    bool IsValid() const { return mColorBuffer.IsValid(); }
+
+    void SetPixel(uint32_t x, uint32_t y, uint32_t color)
+    {
+		mColorBuffer.SetPixel(x, y, color);
+    }
+
+    void Clear(uint32_t color)
+    {
+		mColorBuffer.Clear(color);
+    }
+
+    void Render()
+    {
+        mColorBuffer.UpdateTexture();
+		mColorBuffer.Render();
+    }
+
+private:
+	ColorBuffer mColorBuffer;
+};
+
+//------------------------------------------------------------------------------
 class Application
 {
 public:
     Application(const AppConfig& config)
         : mConfig(config)
         , mSDLWindow(config)
-        , mColorBuffer(mSDLWindow.GetSDLRenderer(), config)
+        , mPixelRenderer(mSDLWindow.GetSDLRenderer(), config)
     {
         if (!mSDLWindow.IsValid())
         {
@@ -205,7 +228,7 @@ public:
 
     bool IsValid() const 
     { 
-        return mSDLWindow.IsValid() && mColorBuffer.IsValid(); 
+        return mSDLWindow.IsValid() && mPixelRenderer.IsValid();
     }
 
     void Run()
@@ -235,16 +258,16 @@ public:
             }
 
             // Update buffer
-            mColorBuffer.Clear(0xFF0000FF);
+            mPixelRenderer.Clear(0xFF0000FF);
 			for (uint32_t i = 0; i < mConfig.mWindowWidth; ++i)
 			{
-				mColorBuffer.SetPixel(i, 300, 0xFFFF0000);
-			}
-            mColorBuffer.UpdateTexture();
+                mPixelRenderer.SetPixel(i, 300, 0xFFFF0000);
+			}            
 
 			SDL_SetRenderDrawColor(mSDLWindow.GetSDLRenderer(), 0, 0, 0, 255);
 			SDL_RenderClear(mSDLWindow.GetSDLRenderer());
-            mColorBuffer.Render();
+                        
+            mPixelRenderer.Render();
 			SDL_RenderPresent(mSDLWindow.GetSDLRenderer());
         }
     }
@@ -252,7 +275,7 @@ public:
 private:
     AppConfig mConfig;
     SDLWindow mSDLWindow;
-    ColorBuffer mColorBuffer;
+    PixelRenderer mPixelRenderer;
 };
 
 //------------------------------------------------------------------------------
