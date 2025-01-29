@@ -17,6 +17,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
     GIT_TAG release-2.30.8
 )
+set(SDL_SHARED OFF)  # Disable shared (DLL) build
+set(SDL_STATIC ON)   # Enable static build
 FetchContent_MakeAvailable(SDL)
 
 # Collect all source and header files
@@ -66,11 +68,3 @@ target_link_libraries(3DRenderer PRIVATE
 
 # Configure definitions
 target_compile_definitions(3DRenderer PUBLIC RESOURCES_PATH="${CMAKE_SOURCE_DIR}/resources/")
-
-# Enable clang-tidy static analysis
-set(CLANG_TIDY_COMMAND "clang-tidy")
-
-# Apply clang-tidy to all targets
-set_target_properties(3DRenderer PROPERTIES
-    CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND};-checks=*,-clang-analyzer-alpha.*"
-)
