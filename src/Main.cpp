@@ -122,10 +122,10 @@ class ColorBuffer
 {
 public:
     ColorBuffer(SDL_Renderer* renderer, const AppConfig& config)
-        : mRenderer(renderer),
-        mWidth(config.mWindowWidth),
-        mHeight(config.mWindowHeight),
-        mBuffer(mWidth* mHeight, 0)
+        : mRenderer(renderer)
+        , mWidth(config.mWindowWidth)
+        , mHeight(config.mWindowHeight)
+        , mBuffer(mWidth* mHeight, 0)
     {        
         mTexture.reset(SDL_CreateTexture(mRenderer,
             SDL_PIXELFORMAT_ARGB8888,
@@ -212,12 +212,12 @@ private:
 class Application
 {
 public:
-    Application(const AppConfig& config)
+    explicit Application(const AppConfig& config)
         : mConfig(config)
         , mSDLWindow(config)
         , mPixelRenderer(mSDLWindow.GetSDLRenderer(), config)
     {
-        if (!mSDLWindow.IsValid())
+        if (!IsValid())
         {
             std::cerr << "Application startup failed: SDL could not be initialized." << std::endl;
             return;
@@ -226,8 +226,8 @@ public:
         std::cout << "Application created successfully." << std::endl;
     }
 
-    bool IsValid() const 
-    { 
+    bool IsValid() const
+    {
         return mSDLWindow.IsValid() && mPixelRenderer.IsValid();
     }
 
@@ -239,43 +239,83 @@ public:
             return;
         }
 
-        while (true)
+        SDL_Renderer* renderer = mSDLWindow.GetSDLRenderer();
+
+        bool running = true;
+        while (running)
         {
-            SDL_Event event;
-            if (SDL_PollEvent(&event))
-            {
-                if (event.type == SDL_QUIT)
-                {
-                    break;
-                }
-				else if (event.type == SDL_KEYDOWN)
-				{
-					if (event.key.keysym.sym == SDLK_ESCAPE)
-					{
-						break;
-					}
-				}
-            }
+            running = ProcessEvents();
+            OnUpdate();
 
-            // Update buffer
-            mPixelRenderer.Clear(0xFF0000FF);
-			for (uint32_t i = 0; i < mConfig.mWindowWidth; ++i)
-			{
-                mPixelRenderer.SetPixel(i, 300, 0xFFFF0000);
-			}            
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
 
-			SDL_SetRenderDrawColor(mSDLWindow.GetSDLRenderer(), 0, 0, 0, 255);
-			SDL_RenderClear(mSDLWindow.GetSDLRenderer());
-                        
+            OnRender(mPixelRenderer);
             mPixelRenderer.Render();
-			SDL_RenderPresent(mSDLWindow.GetSDLRenderer());
+
+            SDL_RenderPresent(renderer);
         }
     }
 
+    AppConfig GetConfig() const { return mConfig; }
+
+protected:
+    // Lifecycle Methods (Meant for Subclassing)
+    virtual void OnEvent(const SDL_Event& event) { (void)event; }
+    virtual void OnUpdate() { }
+    virtual void OnRender(PixelRenderer& pixelRenderer) { (void)pixelRenderer; }
+
 private:
+    bool ProcessEvents()
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+            {
+                return false;
+            }
+            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+            {
+                return false;
+            }
+
+            OnEvent(event);  // Delegate to virtual method
+        }
+        return true;
+    }
+
     AppConfig mConfig;
     SDLWindow mSDLWindow;
     PixelRenderer mPixelRenderer;
+};
+
+//------------------------------------------------------------------------------
+class RendererApplication : public Application
+{
+public:
+	RendererApplication(const AppConfig& config)
+		: Application(config)
+	{ }
+
+    virtual void OnEvent(const SDL_Event& event) override
+    { 
+        (void)event;
+    }
+
+    virtual void OnUpdate() override
+    { 
+        
+    }
+
+    virtual void OnRender(PixelRenderer& pixelRenderer) override
+    {
+        pixelRenderer.Clear(0xFF0000FF);
+        for (uint32_t i = 0; i < GetConfig().mWindowWidth; ++i)
+        {
+            pixelRenderer.SetPixel(i, 300, 0xFFFF0000);
+        }
+    }
 };
 
 //------------------------------------------------------------------------------
@@ -289,7 +329,7 @@ int SDL_main(int argc, char* argv[])
     config.mWindowHeight = 600;
     config.mWindowTitle = "My Custom SDL App";
 
-    Application app(config);
+    RendererApplication app(config);
     if (!app.IsValid())
     {
         return -1;
