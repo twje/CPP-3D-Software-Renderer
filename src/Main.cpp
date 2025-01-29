@@ -4,27 +4,39 @@
 #include <SDL.h>
 
 //------------------------------------------------------------------------------
+struct AppConfig
+{
+    uint32_t mWindowWidth = 800;
+    uint32_t mWindowHeight = 600;
+    std::string windowTitle = "SDL Application";
+};
+
+//------------------------------------------------------------------------------
 class SDLWindow
 {
 public:
-    explicit SDLWindow(uint32_t flags = SDL_INIT_VIDEO)
+    explicit SDLWindow(const AppConfig& config, uint32_t flags = SDL_INIT_VIDEO)
         : mWindow(nullptr)
-		, mRenderer(nullptr)
+        , mRenderer(nullptr)
         , mInitialized(false)
     {
-        if (!InitializeSDL(flags) || !CreateWindow() || !CreateRenderer())
+        if (!InitializeSDL(flags) || !CreateWindow(config) || !CreateRenderer())
         {
-            return;  // Failure is logged inside helper functions
+            return;
         }
     }
 
+    bool IsValid() const { return mInitialized && mWindow && mRenderer; }
+
+    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
+
     ~SDLWindow()
     {
-		if (mRenderer)
-		{
-			SDL_DestroyRenderer(mRenderer);
-			std::cout << "SDL Renderer destroyed successfully." << std::endl;
-		}
+        if (mRenderer)
+        {
+            SDL_DestroyRenderer(mRenderer);
+            std::cout << "SDL Renderer destroyed successfully." << std::endl;
+        }
 
         if (mWindow)
         {
@@ -38,11 +50,6 @@ public:
             std::cout << "SDL shutdown successfully." << std::endl;
         }
     }
-
-    bool IsValid() const { return mInitialized && mWindow && mRenderer; }
-
-    SDL_Window* GetSDLWindow() { return mWindow; }
-	SDL_Renderer* GetSDLRenderer() { return mRenderer; }
 
     // Delete copy and assignment to prevent accidental re-initialization
     SDLWindow(const SDLWindow&) = delete;
@@ -62,14 +69,14 @@ private:
         return false;
     }
 
-    bool CreateWindow()
+    bool CreateWindow(const AppConfig& config)
     {
         mWindow = SDL_CreateWindow(
-            "SDL Application",
+            config.windowTitle.c_str(),
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
-            800,
-            600,
+            config.mWindowWidth,
+            config.mWindowHeight,
             SDL_WINDOW_SHOWN);
 
         if (mWindow)
@@ -84,19 +91,19 @@ private:
 
     bool CreateRenderer()
     {
-		mRenderer = SDL_CreateRenderer(mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        mRenderer = SDL_CreateRenderer(mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         if (mRenderer)
         {
-			std::cout << "SDL Renderer created successfully." << std::endl;
-			return true;
+            std::cout << "SDL Renderer created successfully." << std::endl;
+            return true;
         }
 
-		SDL_Log("Failed to create renderer: %s", SDL_GetError());
-		return false;
+        SDL_Log("Failed to create renderer: %s", SDL_GetError());
+        return false;
     }
 
     SDL_Window* mWindow;
-	SDL_Renderer* mRenderer;
+    SDL_Renderer* mRenderer;
     bool mInitialized;
 };
 
@@ -104,10 +111,10 @@ private:
 class ColorBuffer
 {
 public:
-    ColorBuffer(SDL_Renderer* renderer, uint32_t width, uint32_t height)
+    ColorBuffer(SDL_Renderer* renderer, const AppConfig& config)
         : mRenderer(renderer)
-        , mWidth(width)
-        , mHeight(height)
+        , mWidth(config.mWindowWidth)
+        , mHeight(config.mWindowHeight)
     {
         mBuffer = new uint32_t[mWidth * mHeight];
 
@@ -164,16 +171,17 @@ private:
     uint32_t mWidth;
     uint32_t mHeight;
     uint32_t* mBuffer;
-    SDL_Texture* mTexture;  
+    SDL_Texture* mTexture;
 };
 
 //------------------------------------------------------------------------------
 class Application
 {
 public:
-    Application() 
-        : mSDLWindow()
-		, mColorBuffer(mSDLWindow.GetSDLRenderer(), 800, 600)
+    Application(const AppConfig& config)
+        : mConfig(config)
+        , mSDLWindow(config)
+        , mColorBuffer(mSDLWindow.GetSDLRenderer(), config)
     {
         if (!mSDLWindow.IsValid())
         {
@@ -228,6 +236,7 @@ public:
     }
 
 private:
+    AppConfig mConfig;
     SDLWindow mSDLWindow;
     ColorBuffer mColorBuffer;
 };
@@ -238,7 +247,12 @@ int SDL_main(int argc, char* argv[])
     (void)argc; // Avoid unused parameter warning
     (void)argv;
 
-    Application app;
+    AppConfig config;
+    config.mWindowWidth = 800;
+    config.mWindowHeight = 600;
+    config.windowTitle = "My Custom SDL App";
+
+    Application app(config);
     if (!app.IsValid())
     {
         return -1;
