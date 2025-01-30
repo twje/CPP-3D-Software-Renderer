@@ -47,7 +47,7 @@ private:
     void CreateWindow(const AppConfig& config)
     {
         uint32_t windowFlags = SDL_WINDOW_SHOWN;
-        int displayIndex = config.mMonitorIndex;
+        int32_t displayIndex = config.mMonitorIndex;
 
         if (config.mFullscreen)
         {
@@ -96,12 +96,12 @@ private:
 class SDLRenderer
 {
 public:
-    explicit SDLRenderer(SDL_Window* window)
+    explicit SDLRenderer(SDLWindow& window)
         : mRenderer(nullptr)
-    {
-        if (window)
+    {		
+        if (SDL_Window* sdlWindow = window.GetSDLWindow())
         {
-            mRenderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            mRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
             if (!mRenderer)
             {
                 SDL_Log("Failed to create renderer: %s", SDL_GetError());
@@ -134,16 +134,30 @@ private:
 };
 
 //------------------------------------------------------------------------------
+struct SDLContext
+{
+    SDLWindow mWindow;
+    SDLRenderer mRenderer;
+
+    explicit SDLContext(const AppConfig& config)
+        : mWindow(config)
+        , mRenderer(mWindow)
+    { }
+
+    bool IsValid() const { return mWindow.IsValid() && mRenderer.IsValid(); }
+};
+
+//------------------------------------------------------------------------------
 class ColorBuffer
 {
 public:
-    ColorBuffer(SDLWindow& window, SDLRenderer& renderer)
-        : mRenderer(renderer.GetSDLRenderer())
-        , mWidth(window.GetWindowWidth())
-        , mHeight(window.GetWindowHeight())
-        , mBuffer(mWidth* mHeight, 0)
+    ColorBuffer(SDLContext& context)        
+		: mContext(context)
+        , mWidth(context.mWindow.GetWindowWidth())
+        , mHeight(context.mWindow.GetWindowHeight())
+        , mBuffer(mWidth * mHeight, 0)
     {
-        mTexture = SDL_CreateTexture(mRenderer,
+        mTexture = SDL_CreateTexture(context.mRenderer.GetSDLRenderer(),
             SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,
             mWidth,
@@ -190,12 +204,12 @@ public:
     {
         if (mTexture)
         {
-            SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
+            SDL_RenderCopy(mContext.mRenderer.GetSDLRenderer(), mTexture, nullptr, nullptr);
         }
     }
 
 private:
-    SDL_Renderer* mRenderer;
+	SDLContext& mContext;    
     uint32_t mWidth;
     uint32_t mHeight;
     std::vector<uint32_t> mBuffer;
@@ -206,8 +220,8 @@ private:
 class PixelRenderer
 {
 public:
-    PixelRenderer(SDLWindow& window, SDLRenderer& renderer)
-        : mColorBuffer(window, renderer)
+    PixelRenderer(SDLContext& context)
+        : mColorBuffer(context)
     { }
 
     bool IsValid() const { return mColorBuffer.IsValid(); }
@@ -236,18 +250,13 @@ private:
 class Application
 {
 public:
-    explicit Application(const AppConfig& config)
-        : mConfig(config)
-        , mSDLWindow(config)
-        , mSDLRenderer(mSDLWindow.GetSDLWindow())
-        , mPixelRenderer(mSDLWindow, mSDLRenderer)
+    explicit Application(const AppConfig& config) 
+        : mContext(config)        
+        , mPixelRenderer(mContext)
         , mRunning(IsValid())
     { }
 
-    bool IsValid() const
-    {
-        return mSDLWindow.IsValid() && mPixelRenderer.IsValid();
-    }
+    bool IsValid() const { return mContext.IsValid(); }
 
     void Run()
     {
@@ -256,7 +265,7 @@ public:
             return;
         }
 
-        SDL_Renderer* renderer = mSDLRenderer.GetSDLRenderer();
+        SDL_Renderer* renderer = mContext.mRenderer.GetSDLRenderer();
         
         while (mRunning)
         {
@@ -273,7 +282,7 @@ public:
         }
     }
 
-    AppConfig GetConfig() const { return mConfig; }
+    const SDLContext& GetContext() const { return mContext; }
 
 protected:
     // Lifecycle Methods (Meant for Subclassing)
@@ -301,10 +310,8 @@ private:
             OnEvent(event);  // Delegate to virtual method
         }        
     }
-
-    AppConfig mConfig;
-    SDLWindow mSDLWindow;
-	SDLRenderer mSDLRenderer;
+    
+	SDLContext mContext;
     PixelRenderer mPixelRenderer;
     bool mRunning;
 };
@@ -329,8 +336,11 @@ public:
 
     virtual void OnRender(PixelRenderer& pixelRenderer) override
     {
+		const SDLWindow& window = GetContext().mWindow;
+
+
         pixelRenderer.Clear(0xFF0000FF);
-        for (uint32_t i = 0; i < GetConfig().mWindowWidth; ++i)
+        for (uint32_t i = 0; i < window.GetWindowWidth(); ++i)
         {
             pixelRenderer.SetPixel(i, 300, 0xFFFF0000);
         }
