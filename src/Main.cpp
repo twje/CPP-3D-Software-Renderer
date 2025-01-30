@@ -9,6 +9,9 @@ struct AppConfig
     uint32_t mWindowWidth = 800;
     uint32_t mWindowHeight = 600;
     std::string mWindowTitle = "SDL Application";
+    bool mFullscreen = false;
+	bool mUseNativeResolution = true;
+	int32_t mMonitorIndex = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -30,6 +33,7 @@ struct SDLRendererDeleter
 };
 
 //------------------------------------------------------------------------------
+// TODO: app config should be constant
 class SDLWindow
 {
 public:
@@ -37,6 +41,8 @@ public:
         : mWindow(nullptr)
         , mRenderer(nullptr)
         , mInitialized(false)
+		, mWindowWidth(config.mWindowWidth)
+		, mWindowHeight(config.mWindowHeight)
     {
         if (!InitializeSDL(flags) || !CreateWindow(config) || !CreateRenderer())
         {
@@ -56,6 +62,9 @@ public:
             std::cout << "SDL shutdown successfully." << std::endl;
         }
     }
+
+    uint32_t GetWindowWidth() const { return mWindowWidth; }
+    uint32_t GetWindowHeight() const { return mWindowHeight; }
 
     // Delete copy and assignment to prevent accidental re-initialization
     SDLWindow(const SDLWindow&) = delete;
@@ -77,17 +86,40 @@ private:
 
     bool CreateWindow(const AppConfig& config)
     {
+        uint32_t windowFlags = SDL_WINDOW_SHOWN;
+        int displayIndex = config.mMonitorIndex;
+
+        if (config.mFullscreen)
+        {
+            windowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        }
+
+        SDL_DisplayMode displayMode;
+        if (SDL_GetCurrentDisplayMode(displayIndex, &displayMode) != 0)
+        {
+            SDL_Log("Failed to get display mode: %s", SDL_GetError());
+            return false;
+        }
+
+        if (config.mUseNativeResolution)
+        {
+            mWindowWidth = displayMode.w;
+            mWindowHeight = displayMode.h;
+        }
+
+        int32_t posX = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
+        int32_t posY = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
+
         mWindow.reset(SDL_CreateWindow(
             config.mWindowTitle.c_str(),
-            SDL_WINDOWPOS_CENTERED,
-            SDL_WINDOWPOS_CENTERED,
-            config.mWindowWidth,
-            config.mWindowHeight,
-            SDL_WINDOW_SHOWN));
+            posX, posY,
+            mWindowWidth, mWindowHeight,
+            windowFlags));
 
         if (mWindow)
         {
-            std::cout << "SDL Window created successfully." << std::endl;
+            std::cout << "SDL Window created successfully on monitor " << displayIndex << "." << std::endl;
+            std::cout << "Window Size: " << mWindowWidth << "x" << mWindowHeight << std::endl;
             return true;
         }
 
@@ -110,6 +142,8 @@ private:
 
     std::unique_ptr<SDL_Window, SDLWindowDeleter> mWindow;
     std::unique_ptr<SDL_Renderer, SDLRendererDeleter> mRenderer;
+    uint32_t mWindowWidth;
+    uint32_t mWindowHeight;
     bool mInitialized;
 };
 
@@ -127,12 +161,12 @@ struct SDLTextureDeleter
 class ColorBuffer
 {
 public:
-    ColorBuffer(SDL_Renderer* renderer, const AppConfig& config)
-        : mRenderer(renderer)
-        , mWidth(config.mWindowWidth)
-        , mHeight(config.mWindowHeight)
+    ColorBuffer(SDLWindow& window)
+        : mRenderer(window.GetSDLRenderer())
+        , mWidth(window.GetWindowWidth())
+        , mHeight(window.GetWindowHeight())
         , mBuffer(mWidth* mHeight, 0)
-    {        
+    {
         mTexture.reset(SDL_CreateTexture(mRenderer,
             SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,
@@ -188,8 +222,8 @@ private:
 class PixelRenderer
 {
 public:
-    PixelRenderer(SDL_Renderer* renderer, const AppConfig& config)
-        : mColorBuffer(renderer, config)
+    PixelRenderer(SDLWindow& window)
+        : mColorBuffer(window)
     { }
 
     bool IsValid() const { return mColorBuffer.IsValid(); }
@@ -221,7 +255,7 @@ public:
     explicit Application(const AppConfig& config)
         : mConfig(config)
         , mSDLWindow(config)
-        , mPixelRenderer(mSDLWindow.GetSDLRenderer(), config)
+        , mPixelRenderer(mSDLWindow)
         , mRunning(IsValid())
     { }
 
@@ -324,9 +358,10 @@ int SDL_main(int argc, char* argv[])
     (void)argv;
 
     AppConfig config;
-    config.mWindowWidth = 800;
-    config.mWindowHeight = 600;
     config.mWindowTitle = "My Custom SDL App";
+	config.mFullscreen = false;
+    config.mUseNativeResolution = false;
+	config.mMonitorIndex = 1;
 
     RendererApplication app(config);
     if (!app.IsValid())
