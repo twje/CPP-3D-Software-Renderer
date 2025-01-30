@@ -20,33 +20,22 @@ class SDLWindow
 public:
     explicit SDLWindow(const AppConfig& config)
         : mWindow(nullptr)
-        , mRenderer(nullptr)
-		, mWindowWidth(config.mWindowWidth)
-		, mWindowHeight(config.mWindowHeight)
+        , mWindowWidth(config.mWindowWidth)
+        , mWindowHeight(config.mWindowHeight)
     {
-        if (!CreateWindow(config) || !CreateRenderer())
+        CreateWindow(config);        
+    }
+
+    ~SDLWindow()
+    {
+        if (mWindow)
         {
-            return;
+            SDL_DestroyWindow(mWindow);
         }
     }
 
-	~SDLWindow()
-	{
-		if (mRenderer)
-		{
-			SDL_DestroyRenderer(mRenderer);
-		}
-
-		if (mWindow)
-		{
-			SDL_DestroyWindow(mWindow);
-		}
-	}
-
-    bool IsValid() const { return mWindow && mRenderer; }
-
-    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
-
+	SDL_Window* GetSDLWindow() { return mWindow; }
+    bool IsValid() const { return mWindow != nullptr; }    
     uint32_t GetWindowWidth() const { return mWindowWidth; }
     uint32_t GetWindowHeight() const { return mWindowHeight; }
 
@@ -55,7 +44,7 @@ public:
     SDLWindow& operator=(const SDLWindow&) = delete;
 
 private:
-    bool CreateWindow(const AppConfig& config)
+    void CreateWindow(const AppConfig& config)
     {
         uint32_t windowFlags = SDL_WINDOW_SHOWN;
         int displayIndex = config.mMonitorIndex;
@@ -69,7 +58,7 @@ private:
         if (SDL_GetCurrentDisplayMode(displayIndex, &displayMode) != 0)
         {
             SDL_Log("Failed to get display mode: %s", SDL_GetError());
-            return false;
+            return;
         }
 
         if (config.mUseNativeResolution)
@@ -91,38 +80,65 @@ private:
         {
             std::cout << "SDL Window created successfully on monitor " << displayIndex << "." << std::endl;
             std::cout << "Window Size: " << mWindowWidth << "x" << mWindowHeight << std::endl;
-            return true;
+            return;
         }
 
         SDL_Log("Failed to create window: %s", SDL_GetError());
-        return false;
+        return;
     }
 
-    bool CreateRenderer()
-    {
-        mRenderer = SDL_CreateRenderer(mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-        if (mRenderer)
-        {
-            std::cout << "SDL Renderer created successfully." << std::endl;
-            return true;
-        }
-
-        SDL_Log("Failed to create renderer: %s", SDL_GetError());
-        return false;
-    }
-
-    SDL_Window* mWindow;
-    SDL_Renderer* mRenderer;
+    SDL_Window* mWindow;    
     uint32_t mWindowWidth;
     uint32_t mWindowHeight;
+};
+
+//------------------------------------------------------------------------------
+class SDLRenderer
+{
+public:
+    explicit SDLRenderer(SDL_Window* window)
+        : mRenderer(nullptr)
+    {
+        if (window)
+        {
+            mRenderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            if (!mRenderer)
+            {
+                SDL_Log("Failed to create renderer: %s", SDL_GetError());
+            }
+            else
+            {
+                std::cout << "SDL Renderer created successfully." << std::endl;
+            }
+        }
+    }
+
+    ~SDLRenderer()
+    {
+        if (mRenderer)
+        {
+            SDL_DestroyRenderer(mRenderer);
+        }
+    }
+
+    bool IsValid() const { return mRenderer != nullptr; }
+
+    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
+
+    // Delete copy and assignment to prevent accidental re-initialization
+    SDLRenderer(const SDLRenderer&) = delete;
+    SDLRenderer& operator=(const SDLRenderer&) = delete;
+
+private:
+    SDL_Renderer* mRenderer;
 };
 
 //------------------------------------------------------------------------------
 class ColorBuffer
 {
 public:
-    ColorBuffer(SDLWindow& window)
-        : mRenderer(window.GetSDLRenderer())
+    ColorBuffer(SDLWindow& window, SDLRenderer& renderer)
+        : mRenderer(renderer.GetSDLRenderer())
         , mWidth(window.GetWindowWidth())
         , mHeight(window.GetWindowHeight())
         , mBuffer(mWidth* mHeight, 0)
@@ -190,8 +206,8 @@ private:
 class PixelRenderer
 {
 public:
-    PixelRenderer(SDLWindow& window)
-        : mColorBuffer(window)
+    PixelRenderer(SDLWindow& window, SDLRenderer& renderer)
+        : mColorBuffer(window, renderer)
     { }
 
     bool IsValid() const { return mColorBuffer.IsValid(); }
@@ -223,7 +239,8 @@ public:
     explicit Application(const AppConfig& config)
         : mConfig(config)
         , mSDLWindow(config)
-        , mPixelRenderer(mSDLWindow)
+        , mSDLRenderer(mSDLWindow.GetSDLWindow())
+        , mPixelRenderer(mSDLWindow, mSDLRenderer)
         , mRunning(IsValid())
     { }
 
@@ -239,7 +256,7 @@ public:
             return;
         }
 
-        SDL_Renderer* renderer = mSDLWindow.GetSDLRenderer();
+        SDL_Renderer* renderer = mSDLRenderer.GetSDLRenderer();
         
         while (mRunning)
         {
@@ -287,6 +304,7 @@ private:
 
     AppConfig mConfig;
     SDLWindow mSDLWindow;
+	SDLRenderer mSDLRenderer;
     PixelRenderer mPixelRenderer;
     bool mRunning;
 };
