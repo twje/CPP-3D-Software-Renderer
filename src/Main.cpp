@@ -15,24 +15,6 @@ struct AppConfig
 };
 
 //------------------------------------------------------------------------------
-struct SDLWindowDeleter 
-{
-    void operator()(SDL_Window* window) const 
-    {
-        if (window) SDL_DestroyWindow(window);
-    }
-};
-
-//------------------------------------------------------------------------------
-struct SDLRendererDeleter 
-{
-    void operator()(SDL_Renderer* renderer) const 
-    {
-        if (renderer) SDL_DestroyRenderer(renderer);
-    }
-};
-
-//------------------------------------------------------------------------------
 class SDLWindow
 {
 public:
@@ -48,9 +30,22 @@ public:
         }
     }
 
+	~SDLWindow()
+	{
+		if (mRenderer)
+		{
+			SDL_DestroyRenderer(mRenderer);
+		}
+
+		if (mWindow)
+		{
+			SDL_DestroyWindow(mWindow);
+		}
+	}
+
     bool IsValid() const { return mWindow && mRenderer; }
 
-    SDL_Renderer* GetSDLRenderer() { return mRenderer.get(); }
+    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
 
     uint32_t GetWindowWidth() const { return mWindowWidth; }
     uint32_t GetWindowHeight() const { return mWindowHeight; }
@@ -86,11 +81,11 @@ private:
         int32_t posX = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
         int32_t posY = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
 
-        mWindow.reset(SDL_CreateWindow(
+        mWindow = SDL_CreateWindow(
             config.mWindowTitle.c_str(),
             posX, posY,
             mWindowWidth, mWindowHeight,
-            windowFlags));
+            windowFlags);
 
         if (mWindow)
         {
@@ -105,7 +100,7 @@ private:
 
     bool CreateRenderer()
     {
-        mRenderer.reset(SDL_CreateRenderer(mWindow.get(), -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));
+        mRenderer = SDL_CreateRenderer(mWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         if (mRenderer)
         {
             std::cout << "SDL Renderer created successfully." << std::endl;
@@ -116,20 +111,10 @@ private:
         return false;
     }
 
-    std::unique_ptr<SDL_Window, SDLWindowDeleter> mWindow;
-    std::unique_ptr<SDL_Renderer, SDLRendererDeleter> mRenderer;
+    SDL_Window* mWindow;
+    SDL_Renderer* mRenderer;
     uint32_t mWindowWidth;
     uint32_t mWindowHeight;
-};
-
-//------------------------------------------------------------------------------
-// RAII Deleter for SDL_Texture
-struct SDLTextureDeleter 
-{
-    void operator()(SDL_Texture* texture) const 
-    {
-        if (texture) SDL_DestroyTexture(texture);
-    }
 };
 
 //------------------------------------------------------------------------------
@@ -142,17 +127,25 @@ public:
         , mHeight(window.GetWindowHeight())
         , mBuffer(mWidth* mHeight, 0)
     {
-        mTexture.reset(SDL_CreateTexture(mRenderer,
+        mTexture = SDL_CreateTexture(mRenderer,
             SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,
             mWidth,
-            mHeight));
+            mHeight);
 
         if (!mTexture)
         {
             SDL_Log("Failed to create texture: %s", SDL_GetError());
         }
     }
+
+	~ColorBuffer()
+	{
+        if (mTexture)
+        {
+            SDL_DestroyTexture(mTexture);
+        }
+	}
 
     bool IsValid() const { return mTexture != nullptr; }
 
@@ -173,7 +166,7 @@ public:
     {
         if (mTexture)
         {
-            SDL_UpdateTexture(mTexture.get(), nullptr, mBuffer.data(), mWidth * sizeof(uint32_t));
+            SDL_UpdateTexture(mTexture, nullptr, mBuffer.data(), mWidth * sizeof(uint32_t));
         }
     }
 
@@ -181,7 +174,7 @@ public:
     {
         if (mTexture)
         {
-            SDL_RenderCopy(mRenderer, mTexture.get(), nullptr, nullptr);
+            SDL_RenderCopy(mRenderer, mTexture, nullptr, nullptr);
         }
     }
 
@@ -190,7 +183,7 @@ private:
     uint32_t mWidth;
     uint32_t mHeight;
     std::vector<uint32_t> mBuffer;
-    std::unique_ptr<SDL_Texture, SDLTextureDeleter> mTexture;
+    SDL_Texture* mTexture;
 };
 
 //------------------------------------------------------------------------------
