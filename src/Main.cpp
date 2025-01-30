@@ -148,20 +148,17 @@ struct SDLContext
 };
 
 //------------------------------------------------------------------------------
-class ColorBuffer
+class SDLTexture
 {
 public:
-    ColorBuffer(SDLContext& context)        
-		: mContext(context)
-        , mWidth(context.mWindow.GetWindowWidth())
-        , mHeight(context.mWindow.GetWindowHeight())
-        , mBuffer(mWidth * mHeight, 0)
+    explicit SDLTexture(SDLRenderer& renderer, uint32_t width, uint32_t height)
+		: mTexture(nullptr)
     {
-        mTexture = SDL_CreateTexture(context.mRenderer.GetSDLRenderer(),
+        mTexture = SDL_CreateTexture(renderer.GetSDLRenderer(),
             SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,
-            mWidth,
-            mHeight);
+            width,
+            height);
 
         if (!mTexture)
         {
@@ -169,15 +166,32 @@ public:
         }
     }
 
-	~ColorBuffer()
-	{
+    ~SDLTexture()
+    {
         if (mTexture)
         {
             SDL_DestroyTexture(mTexture);
         }
-	}
+    }
 
     bool IsValid() const { return mTexture != nullptr; }
+    SDL_Texture* GetTexture() { return mTexture; }
+
+private:
+    SDL_Texture* mTexture;
+};
+
+//------------------------------------------------------------------------------
+class ColorBuffer
+{
+public:
+    ColorBuffer(SDLContext& context)
+        : mContext(context)
+        , mTexture(context.mRenderer, context.mWindow.GetWindowWidth(), context.mWindow.GetWindowHeight())
+        , mBuffer(context.mWindow.GetWindowWidth() * context.mWindow.GetWindowHeight(), 0)
+    { }
+
+    bool IsValid() const { return mTexture.IsValid(); }
 
     void Clear(uint32_t color)
     {
@@ -186,34 +200,36 @@ public:
 
     void SetPixel(uint32_t x, uint32_t y, uint32_t color)
     {
-        if (x < mWidth && y < mHeight)
+        if (x < mContext.mWindow.GetWindowWidth() && y < mContext.mWindow.GetWindowHeight())
         {
-            mBuffer[y * mWidth + x] = color;
+            mBuffer[y * mContext.mWindow.GetWindowWidth() + x] = color;
         }
     }
 
     void UpdateTexture()
     {
-        if (mTexture)
+        if (mTexture.IsValid())
         {
-            SDL_UpdateTexture(mTexture, nullptr, mBuffer.data(), mWidth * sizeof(uint32_t));
+            SDL_UpdateTexture(
+                mTexture.GetTexture(), 
+                nullptr, mBuffer.data(), 
+                mContext.mWindow.GetWindowWidth() * sizeof(uint32_t)
+            );
         }
     }
 
     void Render()
     {
-        if (mTexture)
+        if (mTexture.IsValid())
         {
-            SDL_RenderCopy(mContext.mRenderer.GetSDLRenderer(), mTexture, nullptr, nullptr);
+            SDL_RenderCopy(mContext.mRenderer.GetSDLRenderer(), mTexture.GetTexture(), nullptr, nullptr);
         }
     }
 
 private:
-	SDLContext& mContext;    
-    uint32_t mWidth;
-    uint32_t mHeight;
+    SDLContext& mContext;
+    SDLTexture mTexture;
     std::vector<uint32_t> mBuffer;
-    SDL_Texture* mTexture;
 };
 
 //------------------------------------------------------------------------------
@@ -251,8 +267,7 @@ class Application
 {
 public:
     explicit Application(const AppConfig& config) 
-        : mContext(config)        
-        , mPixelRenderer(mContext)
+        : mContext(config)
         , mRunning(IsValid())
     { }
 
@@ -267,6 +282,8 @@ public:
 
         SDL_Renderer* renderer = mContext.mRenderer.GetSDLRenderer();
         
+        OnCreate();
+
         while (mRunning)
         {
             ProcessEvents();
@@ -274,21 +291,20 @@ public:
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
-
-            OnRender(mPixelRenderer);
-            mPixelRenderer.Render();
-
+            OnRender();
             SDL_RenderPresent(renderer);
         }
     }
 
     const SDLContext& GetContext() const { return mContext; }
+    SDLContext& GetContext() { return mContext; }
 
 protected:
     // Lifecycle Methods (Meant for Subclassing)
+    virtual void OnCreate() { }
     virtual void OnEvent(const SDL_Event& event) { (void)event; }
     virtual void OnUpdate() { }
-    virtual void OnRender(PixelRenderer& pixelRenderer) { (void)pixelRenderer; }
+    virtual void OnRender() { }
 
 private:
     void ProcessEvents()
@@ -312,7 +328,6 @@ private:
     }
     
 	SDLContext mContext;
-    PixelRenderer mPixelRenderer;
     bool mRunning;
 };
 
@@ -324,6 +339,11 @@ public:
 		: Application(config)
 	{ }
 
+    virtual void OnCreate() override
+    {
+		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
+    }
+
     virtual void OnEvent(const SDL_Event& event) override
     { 
         (void)event;
@@ -334,17 +354,20 @@ public:
         
     }
 
-    virtual void OnRender(PixelRenderer& pixelRenderer) override
+    virtual void OnRender() override
     {
 		const SDLWindow& window = GetContext().mWindow;
 
-
-        pixelRenderer.Clear(0xFF0000FF);
+        mPixelRenderer->Clear(0xFF0000FF);
         for (uint32_t i = 0; i < window.GetWindowWidth(); ++i)
         {
-            pixelRenderer.SetPixel(i, 300, 0xFFFF0000);
+            mPixelRenderer->SetPixel(i, 300, 0xFFFF0000);
         }
+		mPixelRenderer->Render();
     }
+
+private:
+    std::unique_ptr<PixelRenderer> mPixelRenderer;
 };
 
 //------------------------------------------------------------------------------
