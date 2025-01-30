@@ -33,35 +33,24 @@ struct SDLRendererDeleter
 };
 
 //------------------------------------------------------------------------------
-// TODO: app config should be constant
 class SDLWindow
 {
 public:
-    explicit SDLWindow(const AppConfig& config, uint32_t flags = SDL_INIT_VIDEO)
+    explicit SDLWindow(const AppConfig& config)
         : mWindow(nullptr)
         , mRenderer(nullptr)
-        , mInitialized(false)
 		, mWindowWidth(config.mWindowWidth)
 		, mWindowHeight(config.mWindowHeight)
     {
-        if (!InitializeSDL(flags) || !CreateWindow(config) || !CreateRenderer())
+        if (!CreateWindow(config) || !CreateRenderer())
         {
             return;
         }
     }
 
-    bool IsValid() const { return mInitialized && mWindow && mRenderer; }
+    bool IsValid() const { return mWindow && mRenderer; }
 
     SDL_Renderer* GetSDLRenderer() { return mRenderer.get(); }
-
-    ~SDLWindow()
-    {
-        if (mInitialized)
-        {
-            SDL_Quit();
-            std::cout << "SDL shutdown successfully." << std::endl;
-        }
-    }
 
     uint32_t GetWindowWidth() const { return mWindowWidth; }
     uint32_t GetWindowHeight() const { return mWindowHeight; }
@@ -71,19 +60,6 @@ public:
     SDLWindow& operator=(const SDLWindow&) = delete;
 
 private:
-    bool InitializeSDL(uint32_t flags)
-    {
-        if (SDL_Init(flags) == 0)
-        {
-            mInitialized = true;
-            std::cout << "SDL initialized successfully." << std::endl;
-            return true;
-        }
-
-        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
-        return false;
-    }
-
     bool CreateWindow(const AppConfig& config)
     {
         uint32_t windowFlags = SDL_WINDOW_SHOWN;
@@ -144,7 +120,6 @@ private:
     std::unique_ptr<SDL_Renderer, SDLRendererDeleter> mRenderer;
     uint32_t mWindowWidth;
     uint32_t mWindowHeight;
-    bool mInitialized;
 };
 
 //------------------------------------------------------------------------------
@@ -352,23 +327,42 @@ public:
 };
 
 //------------------------------------------------------------------------------
+bool InitializeSDL()
+{
+    if (SDL_Init(SDL_INIT_VIDEO) != 0)
+    {
+        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
+        return false;
+    }
+    std::cout << "SDL initialized successfully." << std::endl;
+    return true;
+}
+
+//------------------------------------------------------------------------------
 int SDL_main(int argc, char* argv[])
 {
     (void)argc; // Avoid unused parameter warning
     (void)argv;
 
-    AppConfig config;
-    config.mWindowTitle = "My Custom SDL App";
-	config.mFullscreen = false;
-    config.mUseNativeResolution = false;
-	config.mMonitorIndex = 1;
-
-    RendererApplication app(config);
-    if (!app.IsValid())
+    if (!InitializeSDL())
     {
         return -1;
     }
 
+    AppConfig config;
+    config.mWindowTitle = "My Custom SDL App";
+    config.mFullscreen = true;
+    config.mUseNativeResolution = false;
+    config.mMonitorIndex = 1;
+
+    RendererApplication app(config);
+    if (!app.IsValid())
+    {
+        SDL_Quit();
+        return -1;
+    }
+
     app.Run();
+    SDL_Quit();
     return 0;
 }
