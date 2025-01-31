@@ -3,10 +3,9 @@
 //------------------------------------------------------------------------------
 SDLWindow::SDLWindow(const AppConfig& config)
     : mWindow(nullptr)
-    , mWindowWidth(config.mWindowWidth)
-    , mWindowHeight(config.mWindowHeight)
+    , mWindowSize(config.mWindowSize)
 {
-    assert(config.mWindowWidth > 0 && config.mWindowHeight > 0);
+    assert(mWindowSize.x > 0 && mWindowSize.y > 0);
     CreateWindow(config);
 }
 
@@ -39,8 +38,8 @@ void SDLWindow::CreateWindow(const AppConfig& config)
 
     if (config.mUseNativeResolution)
     {
-        mWindowWidth = displayMode.w;
-        mWindowHeight = displayMode.h;
+        mWindowSize.x = displayMode.w;
+        mWindowSize.y = displayMode.h;
     }
 
     int32_t posX = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
@@ -49,13 +48,13 @@ void SDLWindow::CreateWindow(const AppConfig& config)
     mWindow = SDL_CreateWindow(
         config.mWindowTitle.c_str(),
         posX, posY,
-        mWindowWidth, mWindowHeight,
+        mWindowSize.x, mWindowSize.y,
         windowFlags);
 
     if (mWindow)
     {
         std::cout << "SDL Window created successfully on monitor " << displayIndex << "." << std::endl;
-        std::cout << "Window Size: " << mWindowWidth << "x" << mWindowHeight << std::endl;
+        std::cout << "Window Size: " << mWindowSize.x << "x" << mWindowSize.y << std::endl;
         return;
     }
 

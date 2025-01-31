@@ -13,8 +13,8 @@ class ColorBuffer
 public:
     ColorBuffer(AppContext& context)
         : mContext(context)
-        , mTexture(context.mRenderer, context.GetWindowWidth(), context.GetWindowHeight())
-        , mBuffer(context.GetWindowWidth() * context.GetWindowHeight(), 0)
+        , mTexture(context.mRenderer, Vector2u(context.GetWindowSize()))
+        , mBuffer(context.GetWindowSize().x * context.GetWindowSize().y, 0)
     { }
 
     bool IsValid() const { return mTexture.IsValid(); }
@@ -26,9 +26,11 @@ public:
 
     void SetPixel(int32_t x, int32_t y, int32_t color)
     {
-        if (x < mContext.GetWindowWidth() && y < mContext.GetWindowHeight())
+		const Vector2i windowSize = mContext.GetWindowSize();
+
+        if (x < windowSize.x && y < windowSize.y)
         {
-            mBuffer[y * mContext.GetWindowWidth() + x] = color;
+            mBuffer[y * windowSize.x + x] = color;
         }
     }
 
@@ -39,7 +41,7 @@ public:
             SDL_UpdateTexture(
                 mTexture.GetTexture(), 
                 nullptr, mBuffer.data(), 
-                mContext.mWindow.GetWindowWidth() * sizeof(uint32_t)
+                mContext.GetWindowSize().x * sizeof(uint32_t)
             );
         }
     }
@@ -135,12 +137,11 @@ private:
     void DrawGrid()
     {
         const int32_t interval = 10;
-        const int32_t width = GetContext().GetWindowWidth();
-		const int32_t height = GetContext().GetWindowHeight();
+		const Vector2i windowSize = GetContext().GetWindowSize();
 
-        for (int32_t x = 0; x <= width; x += 1)
+        for (int32_t x = 0; x <= windowSize.x; x += 1)
         {
-            for (int32_t y = 0; y <= height; y += 1)
+            for (int32_t y = 0; y <= windowSize.y; y += 1)
             {
 				if (x % interval == 0 || y % interval == 0)
 				{

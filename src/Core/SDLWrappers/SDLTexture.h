@@ -2,6 +2,9 @@
 
 // Includes
 //------------------------------------------------------------------------------
+// Core
+#include "Core/Graphics/Vector.h"
+
 // Third party
 #include <SDL.h>
 
@@ -13,7 +16,7 @@ class SDLRenderer;
 class SDLTexture
 {
 public:
-    explicit SDLTexture(SDLRenderer& renderer, uint32_t width, uint32_t height);
+    explicit SDLTexture(SDLRenderer& renderer, Vector2u size);
     ~SDLTexture();
 
     bool IsValid() const { return mTexture != nullptr; }

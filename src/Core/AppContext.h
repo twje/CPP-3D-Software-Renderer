@@ -9,6 +9,7 @@
 
 // Third party
 #include <SDL.h>
+#include "Core/Graphics/Vector.h"
 
 //------------------------------------------------------------------------------
 struct AppContext
@@ -21,8 +22,6 @@ struct AppContext
         , mRenderer(mWindow)
     { }
 
-    int32_t GetWindowWidth() const { return mWindow.GetWindowWidth(); }
-    int32_t GetWindowHeight() const { return mWindow.GetWindowHeight(); }
-
+	const Vector2i& GetWindowSize() const { return mWindow.GetWindowSize(); }
     bool IsValid() const { return mWindow.IsValid() && mRenderer.IsValid(); }
 };

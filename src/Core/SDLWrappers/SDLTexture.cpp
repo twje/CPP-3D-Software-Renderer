@@ -6,14 +6,14 @@
 #include "Core/SDLWrappers/SDLRenderer.h"
 
 //------------------------------------------------------------------------------
-SDLTexture::SDLTexture(SDLRenderer & renderer, uint32_t width, uint32_t height)
+SDLTexture::SDLTexture(SDLRenderer & renderer, Vector2u size)
     : mTexture(nullptr)
 {
     mTexture = SDL_CreateTexture(renderer.GetSDLRenderer(),
         SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING,
-        width,
-        height);
+        size.x,
+        size.y);
 
     if (!mTexture)
     {
