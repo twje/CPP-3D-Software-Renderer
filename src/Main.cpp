@@ -1,198 +1,24 @@
 // Includes
 //------------------------------------------------------------------------------
+// Core
+#include "Core/AppConfig.h"
+#include "Core/AppContext.h"
+#include "Core/SDLWrappers/SDLWindow.h"
+#include "Core/SDLWrappers/SDLRenderer.h"
+#include "Core/SDLWrappers/SDLTexture.h"
+#include "Core/Application.h"
+
 // Third party
 #include <SDL.h>
-
-//------------------------------------------------------------------------------
-struct AppConfig
-{
-    std::string mWindowTitle = "SDL Application";
-    bool mFullscreen = false;
-	bool mUseNativeResolution = true;
-    int32_t mWindowWidth = 800;
-    int32_t mWindowHeight = 600;
-	int32_t mMonitorIndex = 0;
-};
-
-//------------------------------------------------------------------------------
-class SDLWindow
-{
-public:
-    explicit SDLWindow(const AppConfig& config)
-        : mWindow(nullptr)
-        , mWindowWidth(config.mWindowWidth)
-        , mWindowHeight(config.mWindowHeight)
-    {
-        assert(config.mWindowWidth > 0 && config.mWindowHeight > 0);
-        CreateWindow(config);
-    }
-
-    ~SDLWindow()
-    {
-        if (mWindow)
-        {
-            SDL_DestroyWindow(mWindow);
-        }
-    }
-
-	SDL_Window* GetSDLWindow() { return mWindow; }
-    bool IsValid() const { return mWindow != nullptr; }    
-    uint32_t GetWindowWidth() const { return mWindowWidth; }
-    uint32_t GetWindowHeight() const { return mWindowHeight; }
-
-    // Delete copy and assignment to prevent accidental re-initialization
-    SDLWindow(const SDLWindow&) = delete;
-    SDLWindow& operator=(const SDLWindow&) = delete;
-
-private:
-    void CreateWindow(const AppConfig& config)
-    {
-        uint32_t windowFlags = SDL_WINDOW_SHOWN;
-        int32_t displayIndex = config.mMonitorIndex;
-
-        if (config.mFullscreen)
-        {
-            windowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-        }
-
-        SDL_DisplayMode displayMode;
-        if (SDL_GetCurrentDisplayMode(displayIndex, &displayMode) != 0)
-        {
-            SDL_Log("Failed to get display mode: %s", SDL_GetError());
-            return;
-        }
-
-        if (config.mUseNativeResolution)
-        {
-            mWindowWidth = displayMode.w;
-            mWindowHeight = displayMode.h;
-        }
-
-        int32_t posX = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
-        int32_t posY = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
-
-        mWindow = SDL_CreateWindow(
-            config.mWindowTitle.c_str(),
-            posX, posY,
-            mWindowWidth, mWindowHeight,
-            windowFlags);
-
-        if (mWindow)
-        {
-            std::cout << "SDL Window created successfully on monitor " << displayIndex << "." << std::endl;
-            std::cout << "Window Size: " << mWindowWidth << "x" << mWindowHeight << std::endl;
-            return;
-        }
-
-        SDL_Log("Failed to create window: %s", SDL_GetError());
-        return;
-    }
-
-    SDL_Window* mWindow;    
-    uint32_t mWindowWidth;
-    uint32_t mWindowHeight;
-};
-
-//------------------------------------------------------------------------------
-class SDLRenderer
-{
-public:
-    explicit SDLRenderer(SDLWindow& window)
-        : mRenderer(nullptr)
-    {		
-        if (SDL_Window* sdlWindow = window.GetSDLWindow())
-        {
-            mRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-            if (!mRenderer)
-            {
-                SDL_Log("Failed to create renderer: %s", SDL_GetError());
-            }
-            else
-            {
-                std::cout << "SDL Renderer created successfully." << std::endl;
-            }
-        }
-    }
-
-    ~SDLRenderer()
-    {
-        if (mRenderer)
-        {
-            SDL_DestroyRenderer(mRenderer);
-        }
-    }
-
-    bool IsValid() const { return mRenderer != nullptr; }
-
-    SDL_Renderer* GetSDLRenderer() { return mRenderer; }
-
-    // Delete copy and assignment to prevent accidental re-initialization
-    SDLRenderer(const SDLRenderer&) = delete;
-    SDLRenderer& operator=(const SDLRenderer&) = delete;
-
-private:
-    SDL_Renderer* mRenderer;
-};
-
-//------------------------------------------------------------------------------
-struct SDLContext
-{
-    SDLWindow mWindow;
-    SDLRenderer mRenderer;
-
-    explicit SDLContext(const AppConfig& config)
-        : mWindow(config)
-        , mRenderer(mWindow)
-    { }
-
-	int32_t GetWindowWidth() const { return mWindow.GetWindowWidth(); }
-	int32_t GetWindowHeight() const { return mWindow.GetWindowHeight(); }
-
-    bool IsValid() const { return mWindow.IsValid() && mRenderer.IsValid(); }
-};
-
-//------------------------------------------------------------------------------
-class SDLTexture
-{
-public:
-    explicit SDLTexture(SDLRenderer& renderer, uint32_t width, uint32_t height)
-		: mTexture(nullptr)
-    {
-        mTexture = SDL_CreateTexture(renderer.GetSDLRenderer(),
-            SDL_PIXELFORMAT_ARGB8888,
-            SDL_TEXTUREACCESS_STREAMING,
-            width,
-            height);
-
-        if (!mTexture)
-        {
-            SDL_Log("Failed to create texture: %s", SDL_GetError());
-        }
-    }
-
-    ~SDLTexture()
-    {
-        if (mTexture)
-        {
-            SDL_DestroyTexture(mTexture);
-        }
-    }
-
-    bool IsValid() const { return mTexture != nullptr; }
-    SDL_Texture* GetTexture() { return mTexture; }
-
-private:
-    SDL_Texture* mTexture;
-};
 
 //------------------------------------------------------------------------------
 class ColorBuffer
 {
 public:
-    ColorBuffer(SDLContext& context)
+    ColorBuffer(AppContext& context)
         : mContext(context)
-        , mTexture(context.mRenderer, context.mWindow.GetWindowWidth(), context.mWindow.GetWindowHeight())
-        , mBuffer(context.mWindow.GetWindowWidth() * context.mWindow.GetWindowHeight(), 0)
+        , mTexture(context.mRenderer, context.GetWindowWidth(), context.GetWindowHeight())
+        , mBuffer(context.GetWindowWidth() * context.GetWindowHeight(), 0)
     { }
 
     bool IsValid() const { return mTexture.IsValid(); }
@@ -231,7 +57,7 @@ public:
     }
 
 private:
-    SDLContext& mContext;
+    AppContext& mContext;
     SDLTexture mTexture;
     std::vector<uint32_t> mBuffer;
 };
@@ -240,7 +66,7 @@ private:
 class PixelRenderer
 {
 public:
-    PixelRenderer(SDLContext& context)
+    PixelRenderer(AppContext& context)
         : mColorBuffer(context)
     { }
 
@@ -264,75 +90,6 @@ public:
 
 private:
 	ColorBuffer mColorBuffer;
-};
-
-//------------------------------------------------------------------------------
-class Application
-{
-public:
-    explicit Application(const AppConfig& config) 
-        : mContext(config)
-        , mRunning(IsValid())
-    { }
-
-    bool IsValid() const { return mContext.IsValid(); }
-
-    void Run()
-    {
-        if (!IsValid())
-        {            
-            return;
-        }
-
-        SDL_Renderer* renderer = mContext.mRenderer.GetSDLRenderer();
-        
-        OnCreate();
-
-        while (mRunning)
-        {
-            ProcessEvents();
-            OnUpdate();
-
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderClear(renderer);
-            OnRender();
-            SDL_RenderPresent(renderer);
-        }
-    }
-
-    const SDLContext& GetContext() const { return mContext; }
-    SDLContext& GetContext() { return mContext; }
-
-protected:
-    // Lifecycle Methods (Meant for Subclassing)
-    virtual void OnCreate() { }
-    virtual void OnEvent(const SDL_Event& event) { (void)event; }
-    virtual void OnUpdate() { }
-    virtual void OnRender() { }
-
-private:
-    void ProcessEvents()
-    {
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                mRunning = false;
-                return;
-            }
-            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
-            {
-                mRunning = false;
-                return;
-            }
-
-            OnEvent(event);  // Delegate to virtual method
-        }        
-    }
-    
-	SDLContext mContext;
-    bool mRunning;
 };
 
 //------------------------------------------------------------------------------
