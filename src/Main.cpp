@@ -202,11 +202,11 @@ public:
         std::fill(mBuffer.begin(), mBuffer.end(), color);
     }
 
-    void SetPixel(uint32_t x, uint32_t y, uint32_t color)
+    void SetPixel(int32_t x, int32_t y, int32_t color)
     {
-        if (x < mContext.mWindow.GetWindowWidth() && y < mContext.mWindow.GetWindowHeight())
+        if (x < mContext.GetWindowWidth() && y < mContext.GetWindowHeight())
         {
-            mBuffer[y * mContext.mWindow.GetWindowWidth() + x] = color;
+            mBuffer[y * mContext.GetWindowWidth() + x] = color;
         }
     }
 
@@ -246,7 +246,7 @@ public:
 
     bool IsValid() const { return mColorBuffer.IsValid(); }
 
-    void SetPixel(uint32_t x, uint32_t y, uint32_t color)
+    void SetPixel(int32_t x, int32_t y, int32_t color)
     {
 		mColorBuffer.SetPixel(x, y, color);
     }
@@ -361,25 +361,39 @@ public:
     virtual void OnRender() override
     {
         mPixelRenderer->Clear(0x00000000);
-        DrawGrid();
+        DrawRectangle(300, 200, 300, 150, 0xFFFF00FF);
 		mPixelRenderer->Render();
     }
 
 private:
+	void DrawRectangle(int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
+	{
+        for (int32_t i = 0; i <= width; i += 1)
+        {
+            for (int32_t j = 0; j <= height; j += 1)
+            {
+                const int32_t currentX = x + i;
+                const int32_t currentY = y + j;
+                mPixelRenderer->SetPixel(currentX, currentY, color);
+            }
+        }
+	}
+
     void DrawGrid()
     {
         const int32_t interval = 10;
         const int32_t width = GetContext().GetWindowWidth();
 		const int32_t height = GetContext().GetWindowHeight();
 
-        for (int32_t x = 0; x <= width; x += interval)
+        for (int32_t x = 0; x <= width; x += 1)
         {
-            DrawVerticalLine(x, 0, height, 0xFFFFFFFF);
-        }
-
-        for (int32_t y = 0; y <= height; y += interval)
-        {
-            DrawHorizontalLine(y, 0, width, 0xFFFFFFFF);
+            for (int32_t y = 0; y <= height; y += 1)
+            {
+				if (x % interval == 0 || y % interval == 0)
+				{
+					mPixelRenderer->SetPixel(x, y, 0xFFFFFFFF);
+				}
+            }
         }
     }
 
