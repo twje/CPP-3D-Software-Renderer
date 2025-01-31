@@ -6,11 +6,11 @@
 //------------------------------------------------------------------------------
 struct AppConfig
 {
-    uint32_t mWindowWidth = 800;
-    uint32_t mWindowHeight = 600;
     std::string mWindowTitle = "SDL Application";
     bool mFullscreen = false;
 	bool mUseNativeResolution = true;
+    int32_t mWindowWidth = 800;
+    int32_t mWindowHeight = 600;
 	int32_t mMonitorIndex = 0;
 };
 
@@ -23,7 +23,8 @@ public:
         , mWindowWidth(config.mWindowWidth)
         , mWindowHeight(config.mWindowHeight)
     {
-        CreateWindow(config);        
+        assert(config.mWindowWidth > 0 && config.mWindowHeight > 0);
+        CreateWindow(config);
     }
 
     ~SDLWindow()
@@ -143,6 +144,9 @@ struct SDLContext
         : mWindow(config)
         , mRenderer(mWindow)
     { }
+
+	int32_t GetWindowWidth() const { return mWindow.GetWindowWidth(); }
+	int32_t GetWindowHeight() const { return mWindow.GetWindowHeight(); }
 
     bool IsValid() const { return mWindow.IsValid() && mRenderer.IsValid(); }
 };
@@ -356,17 +360,55 @@ public:
 
     virtual void OnRender() override
     {
-		const SDLWindow& window = GetContext().mWindow;
-
-        mPixelRenderer->Clear(0xFF0000FF);
-        for (uint32_t i = 0; i < window.GetWindowWidth(); ++i)
-        {
-            mPixelRenderer->SetPixel(i, 300, 0xFFFF0000);
-        }
+        mPixelRenderer->Clear(0x00000000);
+        DrawGrid();
 		mPixelRenderer->Render();
     }
 
 private:
+    void DrawGrid()
+    {
+        const int32_t interval = 10;
+        const int32_t width = GetContext().GetWindowWidth();
+		const int32_t height = GetContext().GetWindowHeight();
+
+        for (int32_t x = 0; x <= width; x += interval)
+        {
+            DrawVerticalLine(x, 0, height, 0xFFFFFFFF);
+        }
+
+        for (int32_t y = 0; y <= height; y += interval)
+        {
+            DrawHorizontalLine(y, 0, width, 0xFFFFFFFF);
+        }
+    }
+
+    void DrawVerticalLine(int32_t x, int32_t yStart, int32_t yEnd, int32_t color)
+    {
+        if (yStart > yEnd)
+        {
+            std::swap(yStart, yEnd);
+        }
+
+        for (int32_t y = yStart; y <= yEnd; ++y)
+        {
+            mPixelRenderer->SetPixel(x, y, color);
+        }
+    }
+
+    void DrawHorizontalLine(int32_t y, int32_t xStart, int32_t xEnd, int32_t color)
+    {
+        if (xStart > xEnd)
+        {
+            std::swap(xStart, xEnd);
+        }
+
+        for (int32_t x = xStart; x <= xEnd; ++x)
+        {
+            mPixelRenderer->SetPixel(x, y, color);
+        }
+    }
+
     std::unique_ptr<PixelRenderer> mPixelRenderer;
 };
 
@@ -396,7 +438,7 @@ int SDL_main(int argc, char* argv[])
     AppConfig config;
     config.mWindowTitle = "My Custom SDL App";
     config.mFullscreen = true;
-    config.mUseNativeResolution = false;
+    config.mUseNativeResolution = true;
     config.mMonitorIndex = 1;
 
     RendererApplication app(config);
