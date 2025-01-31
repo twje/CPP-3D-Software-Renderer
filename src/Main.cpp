@@ -1,12 +1,8 @@
 // Includes
 //------------------------------------------------------------------------------
 // Core
-#include "Core/AppConfig.h"
-#include "Core/AppContext.h"
-#include "Core/SDLWrappers/SDLWindow.h"
-#include "Core/SDLWrappers/SDLRenderer.h"
+#include "Core/AppCore.h"
 #include "Core/SDLWrappers/SDLTexture.h"
-#include "Core/Application.h"
 
 // Third party
 #include <SDL.h>
@@ -184,42 +180,13 @@ private:
 };
 
 //------------------------------------------------------------------------------
-bool InitializeSDL()
+std::unique_ptr<Application> CreateApplication()
 {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0)
-    {
-        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
-        return false;
-    }
-    std::cout << "SDL initialized successfully." << std::endl;
-    return true;
-}
+	AppConfig config;
+	config.mWindowTitle = "My Custom SDL App";
+	config.mFullscreen = true;
+	config.mUseNativeResolution = true;
+	config.mMonitorIndex = 1;
 
-//------------------------------------------------------------------------------
-int SDL_main(int argc, char* argv[])
-{
-    (void)argc; // Avoid unused parameter warning
-    (void)argv;
-
-    if (!InitializeSDL())
-    {
-        return -1;
-    }
-
-    AppConfig config;
-    config.mWindowTitle = "My Custom SDL App";
-    config.mFullscreen = true;
-    config.mUseNativeResolution = true;
-    config.mMonitorIndex = 1;
-
-    RendererApplication app(config);
-    if (!app.IsValid())
-    {
-        SDL_Quit();
-        return -1;
-    }
-
-    app.Run();
-    SDL_Quit();
-    return 0;
+	return std::make_unique<RendererApplication>(config);
 }
