@@ -134,15 +134,6 @@ public:
         mCubePoints.reserve(9 * 9 * 9);
         mProjectedPoints.resize(9 * 9 * 9);		
 
-        auto projectPoint = [](const Vector3f& point) -> Vector2f
-        {
-            const float fov = 640.0f;
-            float newX = (point.x * fov) / point.z;
-            float newY = (point.y * fov) / point.z;
-            return Vector2f{ newX, newY };
-        };
-        
-
 		for (float x = -1; x <= 1.0f; x += 0.25f)
 		{
             for (float y = -1; y <= 1.0f; y += 0.25f)
