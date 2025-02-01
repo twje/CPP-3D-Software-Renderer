@@ -1,5 +1,8 @@
 // Includes
 //------------------------------------------------------------------------------
+// Application
+#include "Mesh.h"
+
 // Core
 #include "Core/AppCore.h"
 #include "Core/SDLWrappers/SDLTexture.h"
@@ -130,8 +133,10 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
+		mTrianglesToRender.resize(kMeshFaces.size());
+
         // From -1 to 1 (in 9x9x9 cube)
-        mCubePoints.reserve(9 * 9 * 9);
+       /* mCubePoints.reserve(9 * 9 * 9);
         mProjectedPoints.resize(9 * 9 * 9);		
 
 		for (float x = -1; x <= 1.0f; x += 0.25f)
@@ -143,7 +148,7 @@ public:
                     mCubePoints.push_back({ x, y, z });
                 }
             }
-		}
+		}*/
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -153,28 +158,48 @@ public:
 
     virtual void OnUpdate() override
     { 
-        Vector3f cameraPosition { 0.0f, 0.0f, -5.0f };
+        const Vector2i windowSize = GetContext().GetWindowSize();
+        const Vector3f cameraPosition { 0.0f, 0.0f, -5.0f };
         
         mCubeRotation.x += 0.01f;
         mCubeRotation.y += 0.01f;
         mCubeRotation.z += 0.01f;
 
-        for (size_t i = 0; i < mCubePoints.size(); i++)
-        {
-			Vector3f point = mCubePoints[i];
-
-            Vector3f transformedPoint = RotateAboutX(point, mCubeRotation.x);
-            transformedPoint = RotateAboutY(transformedPoint, mCubeRotation.y);
-            transformedPoint = RotateAboutZ(transformedPoint, mCubeRotation.z);
+        static std::vector<Vector3f> faceVertices(3);
         
-            // Translate the points away from the camera
-            transformedPoint.z -= cameraPosition.z;
+		// Build up a list of projected triangles to render
+        for (size_t i = 0; i < kMeshFaces.size(); i++)
+        {
+			const Face& face = kMeshFaces[i];
 
-            // Project the current point
-            Vector2f projected_point = Project(transformedPoint);
+            faceVertices[0] = kMeshVertices[face.a - 1];
+            faceVertices[1] = kMeshVertices[face.b - 1];
+            faceVertices[2] = kMeshVertices[face.c - 1];
+            
+            Triangle projectedTriangle;
 
-            // Save the projected 2D vector in the array of projected points
-            mProjectedPoints[i] = projected_point;
+			for (size_t j = 0; j < 3; j++)
+			{
+				Vector3f transformedVertex = faceVertices[j];
+
+                transformedVertex = RotateAboutX(transformedVertex, mCubeRotation.x);
+                transformedVertex = RotateAboutY(transformedVertex, mCubeRotation.y);
+                transformedVertex = RotateAboutZ(transformedVertex, mCubeRotation.z);
+
+                // Translate the points away from the camera
+                transformedVertex.z -= cameraPosition.z;
+
+                // Project the current point
+                Vector2f projectedPoint = Project(transformedVertex);
+
+                // Scale and translate the projected points to the middle of the screen
+                projectedPoint.x += windowSize.x * 0.5f;
+                projectedPoint.y += windowSize.y * 0.5f;
+
+                projectedTriangle.SetPoint(j, projectedPoint);
+			}
+
+            mTrianglesToRender[i] = projectedTriangle;
         }
     }
 
@@ -182,23 +207,73 @@ public:
     {
         mPixelRenderer->Clear(0x00000000);
         
-		const Vector2i windowSize = GetContext().GetWindowSize();
+        for (size_t i = 0; i < kMeshFaces.size(); i++)
+        {
+			const Triangle& triangle = mTrianglesToRender[i];
+            
+			DrawLine(
+				static_cast<int32_t>(triangle.GetPoint(0).x),
+				static_cast<int32_t>(triangle.GetPoint(0).y),
+				static_cast<int32_t>(triangle.GetPoint(1).x),
+				static_cast<int32_t>(triangle.GetPoint(1).y)
+			);
 
-		for (const Vector2f& projectedPoint : mProjectedPoints)
-		{
-            DrawRectangle(
-                static_cast<int32_t>(projectedPoint.x + (windowSize.x * 0.5f)),
-                static_cast<int32_t>(projectedPoint.y + (windowSize.y * 0.5f)),
-                4,
-                4,
-                0xFFFFFFFF
+            DrawLine(
+                static_cast<int32_t>(triangle.GetPoint(1).x),
+                static_cast<int32_t>(triangle.GetPoint(1).y),
+                static_cast<int32_t>(triangle.GetPoint(2).x),
+                static_cast<int32_t>(triangle.GetPoint(2).y)
             );
-		}
+
+            DrawLine(
+                static_cast<int32_t>(triangle.GetPoint(2).x),
+                static_cast<int32_t>(triangle.GetPoint(2).y),
+                static_cast<int32_t>(triangle.GetPoint(0).x),
+                static_cast<int32_t>(triangle.GetPoint(0).y)
+            );
+
+            /*for (size_t j = 0; j < 3; j++)
+            {
+                DrawRectangle(
+                    static_cast<int32_t>(triangle.GetPoint(j).x),
+                    static_cast<int32_t>(triangle.GetPoint(j).y),
+                    3, 
+                    3, 
+                    0xFFFFFFFF
+                );
+            }*/
+        }
 
 		mPixelRenderer->Render();
     }
 
 private:
+    void DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+    {
+        const int32_t deltaX = x1 - x0;
+        const int32_t deltaY = y1 - y0;
+
+		// Take the greater of the two deltas
+        const int32_t sideLength = abs(deltaX) >= abs(deltaY) ? abs(deltaX) : abs(deltaY);
+
+        const float xInc = deltaX / static_cast<float>(sideLength);
+        const float yInc = deltaY / static_cast<float>(sideLength);
+
+		float currentX = static_cast<float>(x0);
+        float currentY = static_cast<float>(y0);
+
+        for (int32_t i = 0; i <= sideLength; i++)
+        {
+            int32_t pixelX = static_cast<int32_t>(round(currentX));
+            int32_t pixelY = static_cast<int32_t>(round(currentY));
+
+            mPixelRenderer->SetPixel(pixelX, pixelY, 0xFFFFFFFF);
+
+			currentX += xInc;
+			currentY += yInc;
+        }
+    }
+
 	Vector3f RotateAboutX(const Vector3f& point, float angle)
 	{
 		const float s = sin(angle);
@@ -298,8 +373,7 @@ private:
     }
 
     std::unique_ptr<PixelRenderer> mPixelRenderer;
-	std::vector<Vector3f> mCubePoints;
-    std::vector<Vector2f> mProjectedPoints;    
+	std::vector<Triangle> mTrianglesToRender;
     Vector3f mCubeRotation;
 };
 
