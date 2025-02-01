@@ -23,10 +23,23 @@ void Application::Run()
 
     OnCreate();
 
+	const int32_t targetFrameTime = 1000 / 30;
+    uint32_t previousFrameTime = SDL_GetTicks();
+
     while (mRunning)
     {
         ProcessEvents();
         OnUpdate();
+
+        // Wait some time until the reach the target frame time in milliseconds
+        int32_t timeToWait = targetFrameTime - (SDL_GetTicks() - previousFrameTime);
+
+        // Only delay execution if we are running too fast
+        if (timeToWait > 0)
+        {
+            SDL_Delay(static_cast<uint32_t>(timeToWait));
+        }
+        previousFrameTime = SDL_GetTicks();        
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
