@@ -15,6 +15,7 @@ void Mesh::Load(const std::vector<Vector3f>& vertices, const std::vector<Face>& 
     mFaces = faces;
 }
 
+//------------------------------------------------------------------------------
 std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
 {
     std::unique_ptr<Mesh> mesh = std::make_unique<Mesh>();

@@ -135,7 +135,7 @@ public:
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 		
         mMesh = CreateMeshFromOBJFile(ResolveAssetPath("f22.obj"));
-		mTrianglesToRender.resize(mMesh->FaceCount());
+		mTrianglesToRender.reserve(mMesh->FaceCount());
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -148,10 +148,13 @@ public:
         static std::vector<Vector3f> faceVertices(3);
         
         const Vector2i windowSize = GetContext().GetWindowSize();
-        const Vector3f cameraPosition { 0.0f, 0.0f, -5.0f };
+        const Vector3f cameraPosition { 0.0f, 0.0f, 0.0f };
                 
-		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });
-        
+		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });               
+
+        Vector3f transformedVertices[3];
+		mTrianglesToRender.clear();
+
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
@@ -161,31 +164,61 @@ public:
             faceVertices[1] = mMesh->GetVertex(face.b);
             faceVertices[2] = mMesh->GetVertex(face.c);
             
-            Triangle projectedTriangle;
+            Triangle projectedTriangle;		            
 
-			for (size_t j = 0; j < 3; j++)
-			{
-				Vector3f transformedVertex = faceVertices[j];
+			// Transform the vertices
+            for (size_t j = 0; j < 3; j++)
+            {
+                Vector3f transformedVertex = faceVertices[j];
 
-				const Vector3f& rotation = mMesh->GetRotation();
+                const Vector3f& rotation = mMesh->GetRotation();
                 transformedVertex = RotateAboutX(transformedVertex, rotation.x);
                 transformedVertex = RotateAboutY(transformedVertex, rotation.y);
                 transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
 
                 // Translate the points away from the camera
-                transformedVertex.z -= cameraPosition.z;
+                transformedVertex.z += 5;
 
-                // Project the current point
-                Vector2f projectedPoint = Project(transformedVertex);
+                transformedVertices[j] = transformedVertex;
+            }
 
-                // Scale and translate the projected points to the middle of the screen
-                projectedPoint.x += windowSize.x * 0.5f;
-                projectedPoint.y += windowSize.y * 0.5f;
+            // Check backface culling
+            Vector3f vectorA = transformedVertices[0]; /*   A   */
+            Vector3f vectorB = transformedVertices[1]; /*  / \  */
+            Vector3f vectorC = transformedVertices[2]; /* C---B */
 
-                projectedTriangle.SetPoint(j, projectedPoint);
-			}
+            // Get the vector subtraction of B-A and C-A
+            Vector3f vectorAB = vectorB - vectorA;
+            Vector3f vectorAC = vectorC - vectorA;
+            vectorAB.Normalize();
+            vectorAC.Normalize();
 
-            mTrianglesToRender[i] = projectedTriangle;
+            // Compute the face normal (using cross product to find perpendicular)
+            Vector3f normal = vectorAB.Cross(vectorAC);
+			normal.Normalize();
+
+            // Find the vector between vertex A in the triangle and the camera origin
+            Vector3f cameraRay = cameraPosition - vectorA;
+			cameraRay.Normalize();
+
+            float dotNormalCamera = normal.Dot(cameraRay);
+
+            if (dotNormalCamera > 0.0f)
+            {
+                // Project the transformed vertices
+                for (size_t j = 0; j < 3; j++)
+                {
+                    Vector2f projectedPoint = Project(transformedVertices[j]);
+
+                    // Scale and translate the projected points to the middle of the screen
+                    projectedPoint.x += windowSize.x * 0.5f;
+                    projectedPoint.y += windowSize.y * 0.5f;
+
+                    projectedTriangle.SetPoint(j, projectedPoint);
+                }
+
+                mTrianglesToRender.push_back(projectedTriangle);
+            }
         }
     }
 
@@ -193,9 +226,8 @@ public:
     {
         mPixelRenderer->Clear(0x00000000);
         
-        for (size_t i = 0; i < mMesh->FaceCount(); i++)
+        for (const Triangle& triangle : mTrianglesToRender)
         {
-			const Triangle& triangle = mTrianglesToRender[i];            
 			DrawTriangle(triangle);
         }
 
