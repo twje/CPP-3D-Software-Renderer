@@ -1,7 +1,7 @@
 #include "Mesh.h"
 
 //------------------------------------------------------------------------------
-const std::vector<Vector3f> kMeshVertices = {
+const std::vector<Vector3f> kCubeVertices = {
 	{ -1.0f, -1.0f, -1.0f }, // 1
 	{ -1.0f,  1.0f, -1.0f }, // 2
 	{  1.0f,  1.0f, -1.0f }, // 3
@@ -13,7 +13,7 @@ const std::vector<Vector3f> kMeshVertices = {
 };
 
 // Clockwise winding order for front face
-const std::vector<Face> kMeshFaces = {
+const std::vector<Face> kCubeFaces = {
     // front
     { 1, 2, 3 },
     { 1, 3, 4 },
@@ -33,3 +33,10 @@ const std::vector<Face> kMeshFaces = {
     { 6, 8, 1 },
     { 6, 1, 4 }
 };
+
+//------------------------------------------------------------------------------
+void Mesh::Load(const std::vector<Vector3f>& vertices, const std::vector<Face>& faces)
+{
+    mVertices = vertices;
+    mFaces = faces;
+}

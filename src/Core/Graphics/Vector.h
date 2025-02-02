@@ -51,6 +51,19 @@ public:
 		, z(static_cast<T>(other.z))
 	{ }
 
+	Vector3<T> operator+(const Vector3<T>& other) const noexcept 
+	{
+		return { x + other.x, y + other.y, z + other.z };
+	}
+
+	Vector3<T>& operator+=(const Vector3<T>& other) noexcept 
+	{
+		x += other.x;
+		y += other.y;
+		z += other.z;
+		return *this;
+	}
+
 	T x;
 	T y;
 	T z;
