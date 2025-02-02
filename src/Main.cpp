@@ -5,6 +5,7 @@
 
 // Core
 #include "Core/AppCore.h"
+#include "Core/Utils.h"
 #include "Core/SDLWrappers/SDLTexture.h"
 
 // Third party
@@ -132,9 +133,9 @@ public:
     virtual void OnCreate() override
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
-
-		mMesh.Load(kCubeVertices, kCubeFaces);
-		mTrianglesToRender.resize(mMesh.FaceCount());
+		
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("f22.obj"));
+		mTrianglesToRender.resize(mMesh->FaceCount());
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -149,16 +150,16 @@ public:
         const Vector2i windowSize = GetContext().GetWindowSize();
         const Vector3f cameraPosition { 0.0f, 0.0f, -5.0f };
                 
-		mMesh.AddRotation({ 0.01f, 0.01f, 0.01f });
+		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });
         
 		// Build up a list of projected triangles to render
-        for (size_t i = 0; i < mMesh.FaceCount(); i++)
+        for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
-			const Face& face = mMesh.GetFace(i);
+			const Face& face = mMesh->GetFace(i);
 
-            faceVertices[0] = mMesh.GetVertex(face.a - 1);
-            faceVertices[1] = mMesh.GetVertex(face.b - 1);
-            faceVertices[2] = mMesh.GetVertex(face.c - 1);
+            faceVertices[0] = mMesh->GetVertex(face.a);
+            faceVertices[1] = mMesh->GetVertex(face.b);
+            faceVertices[2] = mMesh->GetVertex(face.c);
             
             Triangle projectedTriangle;
 
@@ -166,7 +167,7 @@ public:
 			{
 				Vector3f transformedVertex = faceVertices[j];
 
-				const Vector3f& rotation = mMesh.GetRotation();
+				const Vector3f& rotation = mMesh->GetRotation();
                 transformedVertex = RotateAboutX(transformedVertex, rotation.x);
                 transformedVertex = RotateAboutY(transformedVertex, rotation.y);
                 transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
@@ -192,7 +193,7 @@ public:
     {
         mPixelRenderer->Clear(0x00000000);
         
-        for (size_t i = 0; i < mMesh.FaceCount(); i++)
+        for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
 			const Triangle& triangle = mTrianglesToRender[i];            
 			DrawTriangle(triangle);
@@ -228,6 +229,7 @@ private:
 
     void DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
     {
+		// Use DDA algorithm to draw a line
         const int32_t deltaX = x1 - x0;
         const int32_t deltaY = y1 - y0;
 
@@ -352,7 +354,7 @@ private:
 
     std::unique_ptr<PixelRenderer> mPixelRenderer;
 	std::vector<Triangle> mTrianglesToRender;
-	Mesh mMesh;
+	std::unique_ptr<Mesh> mMesh;
 };
 
 //------------------------------------------------------------------------------

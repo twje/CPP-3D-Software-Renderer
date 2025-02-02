@@ -12,9 +12,20 @@
 class Face
 {
 public:
+	// Vertex indices
 	int32_t a = 0;
 	int32_t b = 0;
 	int32_t c = 0;
+	
+	// Texture indices
+	int32_t at = 0;
+	int32_t bt = 0;
+	int32_t ct = 0;
+
+	// Normal indices
+	int32_t an = 0;
+	int32_t bn = 0;
+	int32_t cn = 0;
 };
 
 //------------------------------------------------------------------------------

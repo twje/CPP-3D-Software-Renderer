@@ -9,17 +9,19 @@
 #include "Core/Graphics/Vector.h"
 
 // System
+#include <filesystem>
 #include <vector>
+#include <memory>
 
+// Type Alias
 //------------------------------------------------------------------------------
-extern const std::vector<Vector3f> kCubeVertices;
-extern const std::vector<Face> kCubeFaces;
+namespace fs = std::filesystem;
 
 //------------------------------------------------------------------------------
 class Mesh
 {
 public:
-	void Load(const std::vector<Vector3f>& vertices, const std::vector<Face>& faces);	
+	void Load(const std::vector<Vector3f>& vertices, const std::vector<Face>& faces);
 	size_t FaceCount() const { return mFaces.size(); }
 	const Vector3f& GetVertex(size_t index) const { return mVertices[index]; }
 	const Face& GetFace(size_t index) const { return mFaces[index]; }
@@ -31,3 +33,6 @@ private:
 	std::vector<Face> mFaces;
 	Vector3f mRotation;
 };
+
+//------------------------------------------------------------------------------
+std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath);
