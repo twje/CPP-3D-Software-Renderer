@@ -95,34 +95,6 @@ private:
 };
 
 //------------------------------------------------------------------------------
-class Camera
-{
-public:
-    Camera()
-        : Camera({ 0, 0 }, { 0.0f, 0.0f }, 90.0f)
-	{ }
-
-    Camera(Vector2i position, Vector2f rotation, float fov)
-		: mPosition(position)
-		, mRotation(rotation)
-		, mFov(fov)
-	{ }
-
-	void SetPosition(const Vector2i& position) { mPosition = position; }
-	void SetRotation(const Vector2f& rotation) { mRotation = rotation; }
-	void SetFov(float fov) { mFov = fov; }
-
-	const Vector2i& GetPosition() const { return mPosition; }
-	const Vector2f& GetRotation() const { return mRotation; }
-	float GetFov() const { return mFov; }
-
-private:
-	Vector2i mPosition;
-	Vector2f mRotation;
-	float mFov;
-};
-
-//------------------------------------------------------------------------------
 class RendererApplication : public Application
 {
 public:
@@ -228,38 +200,178 @@ public:
         
         for (const Triangle& triangle : mTrianglesToRender)
         {
-			DrawTriangle(triangle);
+            DrawFilledTriangle(triangle, 0xffffffff);
+			DrawTriangle(triangle, 0xffff00ff);
         }
 
 		mPixelRenderer->Render();
     }
 
 private:
-    void DrawTriangle(const Triangle& triangle)
+    void DrawFilledTriangle(const Triangle& triangle, uint32_t color)
+    {
+        /* 
+           Draw a filled triangle using the scanline algorithm by splitting it into 
+           flat-top and flat-bottom sections.
+           
+                      (x0,y0)
+                        / \
+                       /   \
+                      /     \
+                     /       \
+                    /         \
+               (x1,y1)------(Mx,My)  (Mid-point value)
+                   \_           \
+                      \_         \
+                         \_       \
+                            \_     \
+                               \    \
+                                 \_  \
+                                    \_\
+                                       \
+                                     (x2,y2)
+
+         */
+	    
+		// Scan lines are missed if the type is Vector2f
+		Vector2i point0 = Vector2i(triangle.GetPoint(0));
+        Vector2i point1 = Vector2i(triangle.GetPoint(1));
+        Vector2i point2 = Vector2i(triangle.GetPoint(2));
+
+        if (point0.y > point1.y) 
+        {
+			std::swap(point0, point1);
+        }
+        if (point1.y > point2.y) 
+        {
+            std::swap(point1, point2);
+        }
+        if (point0.y > point1.y)
+        {
+            std::swap(point0, point1);
+        }
+		        
+        // No bottom triangle
+        if (point1.y == point2.y)
+        {           			
+		    FillFlatBottomTriangle(point0, point1, point2, color);
+        }
+        // No top triangle
+        else if (point0.y == point1.y)
+        {
+            FillFlatTopTriangle(point0, point1, point2, color);
+        }
+        else
+        {
+            // Compute mid point value (seperate flat-top and flat-bottom triangles)
+            Vector2i m = {
+                (((point2.x - point0.x) * (point1.y - point0.y)) / (point2.y - point0.y)) + point0.x,
+                point1.y
+            };
+
+            FillFlatBottomTriangle(point0, point1, m, color);
+            FillFlatTopTriangle(point1, m, point2, color);
+        }
+    }
+
+	void FillFlatBottomTriangle(const Vector2i& point0, const Vector2i& point1, const Vector2i& point2, uint32_t color)
+	{   
+        /*
+                 (x0,y0)
+                   / \
+                  /   \
+                 /     \
+                /       \
+               /         \
+           (x1,y1)------(x2,y2)
+        */
+
+        // y is the independent variable; the slope determines how x changes as y increases.
+        float inverseSlope1 = static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
+        float inverseSlope2 = static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
+
+        // Loop all the scanlines from top to bottom
+        float xStart = static_cast<float>(point0.x);
+        float xEnd = static_cast<float>(point0.x);
+
+        for (int32_t y = point0.y; y <= point2.y; y++)
+        {
+            DrawLine(
+                static_cast<int32_t>(xStart),
+                y,
+                static_cast<int32_t>(xEnd),
+                y,
+                color
+            );
+
+            xStart += inverseSlope1;
+            xEnd += inverseSlope2;
+        }        
+	}
+
+    void FillFlatTopTriangle(const Vector2i& point0, const Vector2i& point1, const Vector2i& point2, uint32_t color)
+    {
+        /*
+           (x0,y0)------(x1,y1)
+               \         /
+                \       /
+                 \     /
+                  \   /
+                   \ /
+                 (x2,y2)
+        */
+
+        // y is the independent variable; the slope determines how x changes as y increases.
+        float inverseSlope1 = static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
+        float inverseSlope2 = static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
+
+        // Loop all the scanlines from top to bottom
+        float xStart = static_cast<float>(point2.x);
+        float xEnd = static_cast<float>(point2.x);
+
+        for (int32_t y = point2.y; y >= point0.y; y--)
+        {
+            DrawLine(
+                static_cast<int32_t>(xStart),
+                y,
+                static_cast<int32_t>(xEnd),
+                y,
+                color
+            );
+
+            xStart -= inverseSlope1;
+            xEnd -= inverseSlope2;
+        }
+    }
+
+    void DrawTriangle(const Triangle& triangle, uint32_t color)
     {
         DrawLine(
             static_cast<int32_t>(triangle.GetPoint(0).x),
             static_cast<int32_t>(triangle.GetPoint(0).y),
             static_cast<int32_t>(triangle.GetPoint(1).x),
-            static_cast<int32_t>(triangle.GetPoint(1).y)
+            static_cast<int32_t>(triangle.GetPoint(1).y),
+            color
         );
 
         DrawLine(
             static_cast<int32_t>(triangle.GetPoint(1).x),
             static_cast<int32_t>(triangle.GetPoint(1).y),
             static_cast<int32_t>(triangle.GetPoint(2).x),
-            static_cast<int32_t>(triangle.GetPoint(2).y)
+            static_cast<int32_t>(triangle.GetPoint(2).y),
+            color
         );
 
         DrawLine(
             static_cast<int32_t>(triangle.GetPoint(2).x),
             static_cast<int32_t>(triangle.GetPoint(2).y),
             static_cast<int32_t>(triangle.GetPoint(0).x),
-            static_cast<int32_t>(triangle.GetPoint(0).y)
+            static_cast<int32_t>(triangle.GetPoint(0).y),
+            color
         );
     }
 
-    void DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+    void DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color)
     {
 		// Use DDA algorithm to draw a line
         const int32_t deltaX = x1 - x0;
@@ -279,7 +391,7 @@ private:
             int32_t pixelX = static_cast<int32_t>(round(currentX));
             int32_t pixelY = static_cast<int32_t>(round(currentY));
 
-            mPixelRenderer->SetPixel(pixelX, pixelY, 0xFFFFFFFF);
+            mPixelRenderer->SetPixel(pixelX, pixelY, color);
 
 			currentX += xInc;
 			currentY += yInc;
