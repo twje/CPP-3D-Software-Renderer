@@ -11,6 +11,33 @@
 // Third party
 #include <SDL.h>
 
+/*
+    TODO:
+
+	Pressing 1 displays the wireframe and a small red dot for each triangle vertex
+    Pressing 2 displays only the wireframe lines
+    Pressing 3 displays filled triangles with a solid color
+    Pressing 4 displays both filled triangles and wireframe lines
+    Pressing c we should enable back-face culling
+    Pressing d we should disable the back-face culling
+*/
+
+//------------------------------------------------------------------------------
+enum class CullMethod
+{
+	None,
+	Backface
+};
+
+//------------------------------------------------------------------------------
+enum class RenderMethod
+{
+	Wireframe,
+    WireframeWithVertices,
+	WireframeTriangle,
+    WireframeTriangleWire
+};
+
 //------------------------------------------------------------------------------
 class ColorBuffer
 {
