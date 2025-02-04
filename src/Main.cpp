@@ -151,8 +151,8 @@ public:
                 
 		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });               
 
-        Vector3f transformedVertices[3];
 		mTrianglesToRender.clear();
+        std::array<Vector3f, 3> transformedVertices;        
 
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
@@ -161,71 +161,49 @@ public:
 
             faceVertices[0] = mMesh->GetVertex(face.a);
             faceVertices[1] = mMesh->GetVertex(face.b);
-            faceVertices[2] = mMesh->GetVertex(face.c);
-            
-            Triangle projectedTriangle;		            
+            faceVertices[2] = mMesh->GetVertex(face.c);                       
 
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
                 Vector3f transformedVertex = faceVertices[j];
 
+                // Rotate vertex
                 const Vector3f& rotation = mMesh->GetRotation();
                 transformedVertex = RotateAboutX(transformedVertex, rotation.x);
                 transformedVertex = RotateAboutY(transformedVertex, rotation.y);
                 transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
 
-                // Translate the points away from the camera
+                // Translate the vertex away from the camera
                 transformedVertex.z += 5;
 
                 transformedVertices[j] = transformedVertex;
             }
 
-            // Check backface culling
-            Vector3f vectorA = transformedVertices[0]; /*   A   */
-            Vector3f vectorB = transformedVertices[1]; /*  / \  */
-            Vector3f vectorC = transformedVertices[2]; /* C---B */
-
-            // Get the vector subtraction of B-A and C-A
-            Vector3f vectorAB = vectorB - vectorA;
-            Vector3f vectorAC = vectorC - vectorA;
-            vectorAB.Normalize();
-            vectorAC.Normalize();
-
-            // Compute the face normal (using cross product to find perpendicular)
-            Vector3f normal = vectorAB.Cross(vectorAC);
-			normal.Normalize();
-
-            // Find the vector between vertex A in the triangle and the camera origin
-            Vector3f cameraRay = cameraPosition - vectorA;
-			cameraRay.Normalize();
-
-            float dotNormalCamera = normal.Dot(cameraRay);
-
-            if (dotNormalCamera > 0.0f)
+            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, transformedVertices))  // Backface culling
             {
-                // Project the transformed vertices
-				std::array<Vector2f, 3> projectedPoints;
+                Triangle projectedTriangle;
 
+                // Project the transformed vertices
                 for (size_t j = 0; j < 3; j++)
                 {
-					// Project vertex to 2D screen space
-                    projectedPoints[j] = Project(transformedVertices[j]);
+				    // Project vertex to 2D screen space
+                    Vector2f projectedPoint = Project(transformedVertices[j]);
 
                     // Scale and translate the projected points to the middle of the screen
-                    projectedPoints[j].x += windowSize.x * 0.5f;
-                    projectedPoints[j].y += windowSize.y * 0.5f;
-                    
-                    projectedTriangle.SetPoint(j, projectedPoints[j]);
+                    projectedPoint.x += windowSize.x * 0.5f;
+                    projectedPoint.y += windowSize.y * 0.5f;
+
+                    projectedTriangle.SetPoint(j, projectedPoint);
                 }
                 
-				// Calculate the average depth of the triangle
-				const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
-				projectedTriangle.SetAverageDepth(averageDepth);
+			    // Calculate the average depth of the triangle
+			    const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
+			    projectedTriangle.SetAverageDepth(averageDepth);
 
                 mTrianglesToRender.push_back(projectedTriangle);
             }
-        }
+        }        
     }
 
     virtual void OnRender() override
@@ -249,6 +227,32 @@ public:
     }
 
 private:
+    bool IsTriangleFrontFaceVisibleToCamera(const Vector3f& cameraPosition, const std::array<Vector3f, 3>& transformedVertices)
+    {
+        // Check backface culling
+        Vector3f vectorA = transformedVertices[0]; /*   A   */
+        Vector3f vectorB = transformedVertices[1]; /*  / \  */
+        Vector3f vectorC = transformedVertices[2]; /* C---B */
+
+        // Get the vector subtraction of B-A and C-A
+        Vector3f vectorAB = vectorB - vectorA;
+        Vector3f vectorAC = vectorC - vectorA;
+        vectorAB.Normalize();
+        vectorAC.Normalize();
+
+        // Compute the face normal (using cross product to find perpendicular)
+        Vector3f normal = vectorAB.Cross(vectorAC);
+        normal.Normalize();
+
+        // Find the vector between vertex A in the triangle and the camera origin
+        Vector3f cameraRay = cameraPosition - vectorA;
+        cameraRay.Normalize();
+
+		float dotNormalCamera = normal.Dot(cameraRay);
+
+		return dotNormalCamera > 0.0f;
+    }
+
     void DrawFilledTriangle(const Triangle& triangle, uint32_t color)
     {
         /* 
@@ -274,7 +278,7 @@ private:
 
          */
 	    
-		// Scan lines are missed if the type is Vector2f
+        // Some scan lines may not render when using `Vector2f`
 		Vector2i point0 = Vector2i(triangle.GetPoint(0));
         Vector2i point1 = Vector2i(triangle.GetPoint(1));
         Vector2i point2 = Vector2i(triangle.GetPoint(2));
