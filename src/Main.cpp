@@ -205,16 +205,23 @@ public:
             if (dotNormalCamera > 0.0f)
             {
                 // Project the transformed vertices
+				std::array<Vector2f, 3> projectedPoints;
+
                 for (size_t j = 0; j < 3; j++)
                 {
-                    Vector2f projectedPoint = Project(transformedVertices[j]);
+					// Project vertex to 2D screen space
+                    projectedPoints[j] = Project(transformedVertices[j]);
 
                     // Scale and translate the projected points to the middle of the screen
-                    projectedPoint.x += windowSize.x * 0.5f;
-                    projectedPoint.y += windowSize.y * 0.5f;
-
-                    projectedTriangle.SetPoint(j, projectedPoint);
+                    projectedPoints[j].x += windowSize.x * 0.5f;
+                    projectedPoints[j].y += windowSize.y * 0.5f;
+                    
+                    projectedTriangle.SetPoint(j, projectedPoints[j]);
                 }
+                
+				// Calculate the average depth of the triangle
+				const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
+				projectedTriangle.SetAverageDepth(averageDepth);
 
                 mTrianglesToRender.push_back(projectedTriangle);
             }
@@ -225,6 +232,13 @@ public:
     {
         mPixelRenderer->Clear(0x00000000);
         
+		// Painters algorithm
+		// Sort faces by average depth. This is a temporary solution until a depth buffer is added.
+		std::sort(mTrianglesToRender.begin(), mTrianglesToRender.end(), [](const Triangle& a, const Triangle& b)
+		{
+			return a.GetAverageDepth() > b.GetAverageDepth();
+		});
+
         for (const Triangle& triangle : mTrianglesToRender)
         {
             DrawFilledTriangle(triangle, 0xffffffff);

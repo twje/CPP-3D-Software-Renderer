@@ -34,6 +34,7 @@ class Triangle
 public:
 	Triangle()
 		: mPoints(3)
+		, mAverageDepth(0.0f)
 	{ }
 
 	void SetPoint(size_t index, const Vector2f& point)
@@ -42,12 +43,23 @@ public:
 		mPoints[index] = point;
 	}
 
+	void SetAverageDepth(float depth)
+	{
+		mAverageDepth = depth;
+	}
+
 	const Vector2f& GetPoint(size_t index) const
 	{
 		assert(index >= 0 && index < 3);
 		return mPoints[index];
 	}
 
+	float GetAverageDepth() const
+	{
+		return mAverageDepth;
+	}
+
 private:
 	std::vector<Vector2f> mPoints;
+	float mAverageDepth;
 };
