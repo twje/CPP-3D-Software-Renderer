@@ -6,9 +6,9 @@ include(FetchContent)
 
 # Specify MSVC static runtime configuration
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
 else()
-	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 endif()
 
 # Fetch SDL2
@@ -20,6 +20,14 @@ FetchContent_Declare(
 set(SDL_SHARED OFF)  # Disable shared (DLL) build
 set(SDL_STATIC ON)   # Enable static build
 FetchContent_MakeAvailable(SDL)
+
+# Fetch GLM
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 0.9.9.8
+)
+FetchContent_MakeAvailable(glm)
 
 # Collect all source and header files
 file(GLOB_RECURSE ProjectSources "${CMAKE_SOURCE_DIR}/src/*.cpp")
@@ -47,6 +55,7 @@ set_target_properties(3DRenderer PROPERTIES
 target_include_directories(3DRenderer PRIVATE 
     ${CMAKE_SOURCE_DIR}/src
     ${SDL2_INCLUDE_DIRS}
+    ${glm_SOURCE_DIR}  # Include GLM headers
 )
 
 # Add compiler flags for MSVC
