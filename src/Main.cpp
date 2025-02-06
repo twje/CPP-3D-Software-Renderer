@@ -2,6 +2,7 @@
 //------------------------------------------------------------------------------
 // Application
 #include "Mesh.h"
+#include "Matrix.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -154,7 +155,10 @@ public:
 		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });               
 
 		mTrianglesToRender.clear();
-        std::array<glm::vec3, 3> transformedVertices;
+        std::array<glm::vec4, 3> transformedVertices;
+
+		mMesh->SetScale({ 1.5f, 1.5f, 1.5f });
+		glm::mat4x4 scaleMatrix = CreateScaleMatrix(mMesh->GetScale());
 
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
@@ -168,13 +172,15 @@ public:
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
-                glm::vec3 transformedVertex = faceVertices[j];
+                glm::vec4 transformedVertex = glm::vec4(faceVertices[j], 1.0f);
+				
+                transformedVertex = scaleMatrix * transformedVertex;
 
                 // Rotate vertex
-                const glm::vec3& rotation = mMesh->GetRotation();
-                transformedVertex = RotateAboutX(transformedVertex, rotation.x);
-                transformedVertex = RotateAboutY(transformedVertex, rotation.y);
-                transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
+                //const glm::vec3& rotation = mMesh->GetRotation();
+                //transformedVertex = RotateAboutX(transformedVertex, rotation.x);
+                //transformedVertex = RotateAboutY(transformedVertex, rotation.y);
+                //transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
 
                 // Translate the vertex away from the camera
                 transformedVertex.z += 5;
@@ -182,6 +188,7 @@ public:
                 transformedVertices[j] = transformedVertex;
             }
 
+			// Author converted 'transformedVertices' to vec3 (ignore this for now)
             if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, transformedVertices))  // Backface culling
             {
                 Triangle projectedTriangle;
@@ -229,7 +236,7 @@ public:
     }
 
 private:
-    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const std::array<glm::vec3, 3>& transformedVertices)
+    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const std::array<glm::vec4, 3>& transformedVertices)
     {
         // Check backface culling
         glm::vec3 vectorA = transformedVertices[0];  /*   A   */
