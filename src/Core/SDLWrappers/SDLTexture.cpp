@@ -6,7 +6,7 @@
 #include "Core/SDLWrappers/SDLRenderer.h"
 
 //------------------------------------------------------------------------------
-SDLTexture::SDLTexture(SDLRenderer & renderer, Vector2u size)
+SDLTexture::SDLTexture(SDLRenderer & renderer, glm::uvec2 size)
     : mTexture(nullptr)
 {
     mTexture = SDL_CreateTexture(renderer.GetSDLRenderer(),

@@ -2,11 +2,9 @@
 
 // Includes
 //------------------------------------------------------------------------------
-// Core
-#include "Core/Graphics/Vector.h"
-
 // Third party
 #include <SDL.h>
+#include <glm/glm.hpp>
 
 // Forward Declarations
 //------------------------------------------------------------------------------
@@ -16,7 +14,7 @@ class SDLRenderer;
 class SDLTexture
 {
 public:
-    explicit SDLTexture(SDLRenderer& renderer, Vector2u size);
+    explicit SDLTexture(SDLRenderer& renderer, glm::uvec2 size);
     ~SDLTexture();
 
     bool IsValid() const { return mTexture != nullptr; }

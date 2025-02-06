@@ -9,7 +9,7 @@
 #include <cstdio>
 
 //------------------------------------------------------------------------------
-void Mesh::Load(const std::vector<Vector3f>& vertices, const std::vector<Face>& faces)
+void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<Face>& faces)
 {
     mVertices = vertices;
     mFaces = faces;
@@ -20,7 +20,7 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
 {
     std::unique_ptr<Mesh> mesh = std::make_unique<Mesh>();
 
-    std::vector<Vector3f> vertices;
+    std::vector<glm::vec3> vertices;
     std::vector<Face> faces;
 
     std::ifstream file(filepath);
@@ -37,7 +37,7 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
 
         if (line[0] == 'v' && line[1] == ' ') // Vertex
         {
-            Vector3f vertex;
+            glm::vec3 vertex;
             if (sscanf_s(line.c_str(), "v %f %f %f", &vertex.x, &vertex.y, &vertex.z) == 3)
             {
                 vertices.push_back(vertex);

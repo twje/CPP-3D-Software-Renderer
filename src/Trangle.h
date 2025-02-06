@@ -2,8 +2,8 @@
 
 // Includes
 //------------------------------------------------------------------------------
-// Core
-#include "Core/Graphics/Vector.h"
+// Third party
+#include <glm/glm.hpp>
 
 // System
 #include <cstdint>
@@ -37,7 +37,7 @@ public:
 		, mAverageDepth(0.0f)
 	{ }
 
-	void SetPoint(size_t index, const Vector2f& point)
+	void SetPoint(size_t index, const glm::vec2& point)
 	{
 		assert(index >= 0 && index < 3);
 		mPoints[index] = point;
@@ -48,7 +48,7 @@ public:
 		mAverageDepth = depth;
 	}
 
-	const Vector2f& GetPoint(size_t index) const
+	const glm::vec2& GetPoint(size_t index) const
 	{
 		assert(index >= 0 && index < 3);
 		return mPoints[index];
@@ -60,6 +60,6 @@ public:
 	}
 
 private:
-	std::vector<Vector2f> mPoints;
+	std::vector<glm::vec2> mPoints;
 	float mAverageDepth;
 };

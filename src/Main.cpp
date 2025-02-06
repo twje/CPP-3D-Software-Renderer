@@ -11,6 +11,8 @@
 // Third party
 #include <SDL.h>
 
+#include <glm/glm.hpp>
+
 /*
     TODO:
 
@@ -44,7 +46,7 @@ class ColorBuffer
 public:
     ColorBuffer(AppContext& context)
         : mContext(context)
-        , mTexture(context.mRenderer, Vector2u(context.GetWindowSize()))
+        , mTexture(context.mRenderer, glm::uvec2(context.GetWindowSize()))
         , mBuffer(context.GetWindowSize().x * context.GetWindowSize().y, 0)
     { }
 
@@ -57,7 +59,7 @@ public:
 
     void SetPixel(int32_t x, int32_t y, int32_t color)
     {
-		const Vector2i windowSize = mContext.GetWindowSize();
+		const glm::ivec2 windowSize = mContext.GetWindowSize();
 
         if (x > 0 && x < windowSize.x && y > 0 && y < windowSize.y)
         {
@@ -144,15 +146,15 @@ public:
 
     virtual void OnUpdate() override
     { 
-        static std::vector<Vector3f> faceVertices(3);
+        static std::vector<glm::vec3> faceVertices(3);
         
-        const Vector2i windowSize = GetContext().GetWindowSize();
-        const Vector3f cameraPosition { 0.0f, 0.0f, 0.0f };
+        const glm::ivec2 windowSize = GetContext().GetWindowSize();
+        const glm::vec3 cameraPosition { 0.0f, 0.0f, 0.0f };
                 
 		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });               
 
 		mTrianglesToRender.clear();
-        std::array<Vector3f, 3> transformedVertices;        
+        std::array<glm::vec3, 3> transformedVertices;
 
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
@@ -166,10 +168,10 @@ public:
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
-                Vector3f transformedVertex = faceVertices[j];
+                glm::vec3 transformedVertex = faceVertices[j];
 
                 // Rotate vertex
-                const Vector3f& rotation = mMesh->GetRotation();
+                const glm::vec3& rotation = mMesh->GetRotation();
                 transformedVertex = RotateAboutX(transformedVertex, rotation.x);
                 transformedVertex = RotateAboutY(transformedVertex, rotation.y);
                 transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
@@ -188,7 +190,7 @@ public:
                 for (size_t j = 0; j < 3; j++)
                 {
 				    // Project vertex to 2D screen space
-                    Vector2f projectedPoint = Project(transformedVertices[j]);
+                    glm::vec2 projectedPoint = Project(transformedVertices[j]);
 
                     // Scale and translate the projected points to the middle of the screen
                     projectedPoint.x += windowSize.x * 0.5f;
@@ -227,28 +229,28 @@ public:
     }
 
 private:
-    bool IsTriangleFrontFaceVisibleToCamera(const Vector3f& cameraPosition, const std::array<Vector3f, 3>& transformedVertices)
+    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const std::array<glm::vec3, 3>& transformedVertices)
     {
         // Check backface culling
-        Vector3f vectorA = transformedVertices[0]; /*   A   */
-        Vector3f vectorB = transformedVertices[1]; /*  / \  */
-        Vector3f vectorC = transformedVertices[2]; /* C---B */
+        glm::vec3 vectorA = transformedVertices[0];  /*   A   */
+        glm::vec3 vectorB = transformedVertices[1];  /*  / \  */
+        glm::vec3 vectorC = transformedVertices[2];  /* C---B */
 
         // Get the vector subtraction of B-A and C-A
-        Vector3f vectorAB = vectorB - vectorA;
-        Vector3f vectorAC = vectorC - vectorA;
-        vectorAB.Normalize();
-        vectorAC.Normalize();
+        glm::vec3 vectorAB = vectorB - vectorA;
+        glm::vec3 vectorAC = vectorC - vectorA;
+        vectorAB = glm::normalize(vectorAB);
+        vectorAC = glm::normalize(vectorAC);        
 
         // Compute the face normal (using cross product to find perpendicular)
-        Vector3f normal = vectorAB.Cross(vectorAC);
-        normal.Normalize();
+        glm::vec3 normal = glm::cross(vectorAB, vectorAC);
+		normal = glm::normalize(normal);
 
         // Find the vector between vertex A in the triangle and the camera origin
-        Vector3f cameraRay = cameraPosition - vectorA;
-        cameraRay.Normalize();
+        glm::vec3 cameraRay = cameraPosition - vectorA;
+		cameraRay = glm::normalize(cameraRay);        
 
-		float dotNormalCamera = normal.Dot(cameraRay);
+		float dotNormalCamera = glm::dot(normal, cameraRay);
 
 		return dotNormalCamera > 0.0f;
     }
@@ -279,9 +281,9 @@ private:
          */
 	    
         // Some scan lines may not render when using `Vector2f`
-		Vector2i point0 = Vector2i(triangle.GetPoint(0));
-        Vector2i point1 = Vector2i(triangle.GetPoint(1));
-        Vector2i point2 = Vector2i(triangle.GetPoint(2));
+        glm::ivec2 point0 = glm::ivec2(triangle.GetPoint(0));
+        glm::ivec2 point1 = glm::ivec2(triangle.GetPoint(1));
+        glm::ivec2 point2 = glm::ivec2(triangle.GetPoint(2));
 
         if (point0.y > point1.y) 
         {
@@ -309,7 +311,7 @@ private:
         else
         {
             // Compute mid point value (seperate flat-top and flat-bottom triangles)
-            Vector2i m = {
+            glm::ivec2 m = {
                 (((point2.x - point0.x) * (point1.y - point0.y)) / (point2.y - point0.y)) + point0.x,
                 point1.y
             };
@@ -319,7 +321,7 @@ private:
         }
     }
 
-	void FillFlatBottomTriangle(const Vector2i& point0, const Vector2i& point1, const Vector2i& point2, uint32_t color)
+	void FillFlatBottomTriangle(const glm::ivec2& point0, const glm::ivec2& point1, const glm::ivec2& point2, uint32_t color)
 	{   
         /*
                  (x0,y0)
@@ -354,7 +356,7 @@ private:
         }        
 	}
 
-    void FillFlatTopTriangle(const Vector2i& point0, const Vector2i& point1, const Vector2i& point2, uint32_t color)
+    void FillFlatTopTriangle(const glm::ivec2& point0, const glm::ivec2& point1, const glm::ivec2& point2, uint32_t color)
     {
         /*
            (x0,y0)------(x1,y1)
@@ -443,7 +445,7 @@ private:
         }
     }
 
-	Vector3f RotateAboutX(const Vector3f& point, float angle)
+    glm::vec3 RotateAboutX(const glm::vec3& point, float angle)
 	{
 		const float s = sin(angle);
 		const float c = cos(angle);
@@ -455,7 +457,7 @@ private:
 		};
 	}
 
-    Vector3f RotateAboutY(const Vector3f& point, float angle)
+    glm::vec3 RotateAboutY(const glm::vec3& point, float angle)
     {
         const float s = sin(angle);
         const float c = cos(angle);
@@ -467,7 +469,7 @@ private:
         };
     }
 
-	Vector3f RotateAboutZ(const Vector3f& point, float angle)
+    glm::vec3 RotateAboutZ(const glm::vec3& point, float angle)
 	{
 		const float s = sin(angle);
 		const float c = cos(angle);
@@ -479,7 +481,7 @@ private:
 		};
     }
 
-	Vector2f Project(const Vector3f& point)
+    glm::vec2 Project(const glm::vec3& point)
 	{
 		const float fov = 640.0f;		
         return { (point.x * fov) / point.z, (point.y * fov) / point.z };
@@ -501,7 +503,7 @@ private:
     void DrawGrid()
     {
         const int32_t interval = 10;
-		const Vector2i windowSize = GetContext().GetWindowSize();
+		const glm::ivec2 windowSize = GetContext().GetWindowSize();
 
         for (int32_t x = 0; x <= windowSize.x; x += 1)
         {

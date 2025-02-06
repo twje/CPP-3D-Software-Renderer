@@ -4,9 +4,9 @@
 //------------------------------------------------------------------------------
 // Core
 #include "Core/AppConfig.h"
-#include "Core/Graphics/Vector.h"
 
 // Third party
+#include <glm/glm.hpp>
 #include <SDL.h>
 
 //------------------------------------------------------------------------------
@@ -18,7 +18,7 @@ public:
 
     SDL_Window* GetSDLWindow() { return mWindow; }
     bool IsValid() const { return mWindow != nullptr; }
-	const Vector2i& GetWindowSize() const { return mWindowSize; }
+	const glm::ivec2& GetWindowSize() const { return mWindowSize; }
 
     // Delete copy and assignment to prevent accidental re-initialization
     SDLWindow(const SDLWindow&) = delete;
@@ -28,5 +28,5 @@ private:
     void CreateWindow(const AppConfig& config);
 
     SDL_Window* mWindow;
-    Vector2i mWindowSize;    
+    glm::ivec2 mWindowSize;
 };

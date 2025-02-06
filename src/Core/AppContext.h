@@ -9,7 +9,7 @@
 
 // Third party
 #include <SDL.h>
-#include "Core/Graphics/Vector.h"
+#include <glm/glm.hpp>
 
 //------------------------------------------------------------------------------
 struct AppContext
@@ -22,6 +22,6 @@ struct AppContext
         , mRenderer(mWindow)
     { }
 
-	const Vector2i& GetWindowSize() const { return mWindow.GetWindowSize(); }
+	const glm::ivec2& GetWindowSize() const { return mWindow.GetWindowSize(); }
     bool IsValid() const { return mWindow.IsValid() && mRenderer.IsValid(); }
 };
