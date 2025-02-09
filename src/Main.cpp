@@ -16,7 +16,6 @@
 
 /*
     TODO:
-
 	Pressing 1 displays the wireframe and a small red dot for each triangle vertex
     Pressing 2 displays only the wireframe lines
     Pressing 3 displays filled triangles with a solid color
@@ -149,16 +148,24 @@ public:
     { 
         static std::vector<glm::vec3> faceVertices(3);
         
-        const glm::ivec2 windowSize = GetContext().GetWindowSize();
+        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
         const glm::vec3 cameraPosition { 0.0f, 0.0f, 0.0f };
-                
-		mMesh->AddRotation({ 0.01f, 0.01f, 0.01f });               
-
+               		
 		mTrianglesToRender.clear();
         std::array<glm::vec4, 3> transformedVertices;
 
-		mMesh->SetScale({ 1.5f, 1.5f, 1.5f });
-		glm::mat4x4 scaleMatrix = CreateScaleMatrix(mMesh->GetScale());
+		mMesh->SetScale({ 1.0f, -1.0f, 1.0f });		
+		mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
+		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
+
+        glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
+        
+        glm::mat4 projectionMatrix = CreatePerspectiveProjectionMatrix(
+            60.0f,
+            windowSize.y / windowSize.x,
+            0.1f,
+            100.0f
+        );
 
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
@@ -172,20 +179,9 @@ public:
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
-                glm::vec4 transformedVertex = glm::vec4(faceVertices[j], 1.0f);
-				
-                transformedVertex = scaleMatrix * transformedVertex;
-
-                // Rotate vertex
-                //const glm::vec3& rotation = mMesh->GetRotation();
-                //transformedVertex = RotateAboutX(transformedVertex, rotation.x);
-                //transformedVertex = RotateAboutY(transformedVertex, rotation.y);
-                //transformedVertex = RotateAboutZ(transformedVertex, rotation.z);
-
-                // Translate the vertex away from the camera
-                transformedVertex.z += 5;
-
+                glm::vec4 transformedVertex = modelMatrix * glm::vec4(faceVertices[j], 1.0f);
                 transformedVertices[j] = transformedVertex;
+				assert(transformedVertex.w == 1.0f);
             }
 
 			// Author converted 'transformedVertices' to vec3 (ignore this for now)
@@ -196,10 +192,13 @@ public:
                 // Project the transformed vertices
                 for (size_t j = 0; j < 3; j++)
                 {
-				    // Project vertex to 2D screen space
-                    glm::vec2 projectedPoint = Project(transformedVertices[j]);
+                    glm::vec2 projectedPoint = ProjectVec4(projectionMatrix, transformedVertices[j]);
+                    
+                    // Scale into the view
+                    projectedPoint.x *= windowSize.x * 0.5f;
+                    projectedPoint.y *= windowSize.y * 0.5f;
 
-                    // Scale and translate the projected points to the middle of the screen
+                    // Translate the projected points to the middle of the screen
                     projectedPoint.x += windowSize.x * 0.5f;
                     projectedPoint.y += windowSize.y * 0.5f;
 
@@ -212,7 +211,7 @@ public:
 
                 mTrianglesToRender.push_back(projectedTriangle);
             }
-        }        
+        }
     }
 
     virtual void OnRender() override
@@ -236,6 +235,26 @@ public:
     }
 
 private:
+    glm::mat4 ComputeModelMatrix(const Mesh& mesh)
+    {
+        /*
+            Converts object-space (local) coordinates into world-space coordinates.
+
+		    Order matters: First scale, then rotate, and finally translate
+		    Example: [T]*[R]*[S]*v
+        */
+
+		glm::mat4 model = glm::mat4(1.0f);
+
+		model *= CreateTranslationMatrix(mesh.GetTranslation());    // Applied 5th
+		model *= CreateRotateAboutZMatrix(mesh.GetRotation().z);    // Applied 4th
+		model *= CreateRotateAboutYMatrix(mesh.GetRotation().y);	// Applied 3rd
+        model *= CreateRotateAboutXMatrix(mesh.GetRotation().x);    // Applied 2nd  
+		model *= CreateScaleMatrix(mesh.GetScale());                // Applied 1st
+
+		return model;
+    }
+
     bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const std::array<glm::vec4, 3>& transformedVertices)
     {
         // Check backface culling
