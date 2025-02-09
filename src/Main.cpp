@@ -174,18 +174,12 @@ public:
         {
 			const Face& face = mMesh->GetFace(i);
 
-            faceVertices[0] = mMesh->GetVertex(face.a);
-            faceVertices[1] = mMesh->GetVertex(face.b);
-            faceVertices[2] = mMesh->GetVertex(face.c);
-
-
-
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
-                glm::vec4 transformedVertex = modelMatrix * glm::vec4(faceVertices[j], 1.0f);
-                transformedVertices[j] = transformedVertex;
-				assert(transformedVertex.w == 1.0f);
+                glm::vec3 vertex = mMesh->GetVertex(face.mVertexIndicies[j]);
+                transformedVertices[j] = modelMatrix * glm::vec4(vertex, 1.0f);                
+				assert(transformedVertices[j].w == 1.0f);
             }
 
 			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
@@ -206,7 +200,7 @@ public:
 
                     // Translate the projected points to the middle of the screen
                     projectedPoint.x += windowSize.x * 0.5f;
-                    projectedPoint.y += windowSize.y * 0.5f;					
+					projectedPoint.y += windowSize.y * 0.5f;
 
                     projectedTriangle.SetPoint(j, projectedPoint);
                 }
@@ -214,11 +208,10 @@ public:
 			    // Calculate the average depth of the triangle
 			    const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
 			    projectedTriangle.SetAverageDepth(averageDepth);
+                float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
 
-				// Apply directional light flat shading
-                const float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
                 uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
-				projectedTriangle.SetColor(shadedColor);
+                projectedTriangle.SetColor(shadedColor);
 
                 mTrianglesToRender.push_back(projectedTriangle);
             }
@@ -585,8 +578,6 @@ private:
 	std::vector<Triangle> mTrianglesToRender;
 	std::unique_ptr<Mesh> mMesh;
     DirectionalLight mDirectionalLight;
-
-    float mNear = 2.0f;
 };
 
 //------------------------------------------------------------------------------

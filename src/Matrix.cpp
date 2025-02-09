@@ -28,8 +28,8 @@ glm::mat4 CreateRotateAboutXMatrix(float degrees)
 
     return glm::transpose(glm::mat4(
 		1.0f, 0.0f,      0.0f,      0.0f,
-		0.0f, cosTheta,  sinTheta,  0.0f,
-		0.0f, -sinTheta, cosTheta,  0.0f,
+		0.0f, cosTheta,  -sinTheta,  0.0f,
+		0.0f, sinTheta, cosTheta,  0.0f,
 		0.0f, 0.0f,      0.0f,      1.0f
     ));
 }
@@ -42,9 +42,9 @@ glm::mat4 CreateRotateAboutYMatrix(float degrees)
     const float sinTheta = glm::sin(radians);
 
     return glm::transpose(glm::mat4(
-        cosTheta, 0.0f, -sinTheta, 0.0f,
+        cosTheta, 0.0f, sinTheta, 0.0f,
         0.0f,     1.0f, 0.0f,      0.0f,
-        sinTheta, 0.0f, cosTheta,  0.0f,
+        -sinTheta, 0.0f, cosTheta,  0.0f,
         0.0f,     0.0f, 0.0f,      1.0f
     ));
 }
@@ -64,8 +64,8 @@ glm::mat4 CreateRotateAboutZMatrix(float degrees)
           of reversing the direction of the rotation from clockwise to counterclockwise.
     */
     return glm::transpose(glm::mat4(
-        cosTheta,  sinTheta, 0.0f, 0.0f,
-        -sinTheta, cosTheta, 0.0f, 0.0f,
+        cosTheta,  -sinTheta, 0.0f, 0.0f,
+        sinTheta, cosTheta, 0.0f, 0.0f,
         0.0f,      0.0f,     1.0f, 0.0f,
         0.0f,      0.0f,     0.0f, 1.0f
     ));

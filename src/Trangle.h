@@ -9,23 +9,11 @@
 #include <cstdint>
 
 //------------------------------------------------------------------------------
-class Face
+struct Face
 {
-public:
-	// Vertex indices
-	int32_t a = 0;
-	int32_t b = 0;
-	int32_t c = 0;
-	
-	// Texture indices
-	int32_t at = 0;
-	int32_t bt = 0;
-	int32_t ct = 0;
-
-	// Normal indices
-	int32_t an = 0;
-	int32_t bn = 0;
-	int32_t cn = 0;
+	std::array<int32_t, 3> mVertexIndicies;
+	std::array<int32_t, 3> mTextureIndicies;
+	std::array<int32_t, 3> mNormalIndicies;
 };
 
 //------------------------------------------------------------------------------
@@ -44,6 +32,12 @@ public:
 		mPoints[index] = point;
 	}
 
+	void SetNormal(size_t index, const glm::vec2& normal)
+	{
+		assert(index >= 0 && index < 3);
+		mNormals[index] = normal;
+	}
+
 	void SetAverageDepth(float depth)
 	{
 		mAverageDepth = depth;
@@ -60,6 +54,12 @@ public:
 		return mPoints[index];
 	}
 
+	const glm::vec2& GetNormal(size_t index) const
+	{
+		assert(index >= 0 && index < 3);
+		return mNormals[index];
+	}
+
 	float GetAverageDepth() const
 	{
 		return mAverageDepth;
@@ -72,6 +72,7 @@ public:
 
 private:
 	std::vector<glm::vec2> mPoints;
+	std::vector<glm::vec2> mNormals;
 	float mAverageDepth;
 	uint32_t mColor;
 };

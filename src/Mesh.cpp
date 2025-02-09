@@ -16,9 +16,10 @@ Mesh::Mesh()
 { }
 
 //------------------------------------------------------------------------------
-void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<Face>& faces)
+void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<glm::vec3>& normals, const std::vector<Face>& faces)
 {
     mVertices = vertices;
+	mNormals = normals;
     mFaces = faces;
 }
 
@@ -28,6 +29,7 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
     std::unique_ptr<Mesh> mesh = std::make_unique<Mesh>();
 
     std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> normals;
     std::vector<Face> faces;
 
     std::ifstream file(filepath);
@@ -49,25 +51,33 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
             {
                 vertices.push_back(vertex);
             }
+        }       
+        else if (line[0] == 'v' && line[1] == 'n') // Vertex
+        {
+            glm::vec3 normal;
+            if (sscanf_s(line.c_str(), "vn %f %f %f", &normal.x, &normal.y, &normal.z) == 3)
+            {
+                normals.push_back(normal);
+            }
         }
         else if (line[0] == 'f' && line[1] == ' ') // Face
         {
             Face face;
             if (sscanf_s(line.c_str(), "f %d/%d/%d %d/%d/%d %d/%d/%d",
-                &face.a, &face.at, &face.an,
-                &face.b, &face.bt, &face.bn,
-                &face.c, &face.ct, &face.cn) == 9)
+                &face.mVertexIndicies[0], &face.mTextureIndicies[0], &face.mNormalIndicies[0],
+                &face.mVertexIndicies[1], &face.mTextureIndicies[1], &face.mNormalIndicies[1],
+                &face.mVertexIndicies[2], &face.mTextureIndicies[2], &face.mNormalIndicies[2]) == 9)
             {
 				// Convert to 0-based indices
-                face.a--, face.at--, face.an--;
-                face.b--, face.bt--, face.bn--;
-                face.c--, face.ct--, face.cn--;
+                face.mVertexIndicies[0]--, face.mTextureIndicies[0]--, face.mNormalIndicies[0]--;
+                face.mVertexIndicies[1]--, face.mTextureIndicies[1]--, face.mNormalIndicies[1]--;
+                face.mVertexIndicies[2]--, face.mTextureIndicies[2]--, face.mNormalIndicies[2]--;
                 
                 faces.push_back(face);
             }
         }
     }
 
-    mesh->Load(vertices, faces);
+    mesh->Load(vertices, normals, faces);
     return mesh;
 }

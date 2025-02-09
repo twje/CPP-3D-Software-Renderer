@@ -22,9 +22,10 @@ class Mesh
 {
 public:
 	Mesh();
-	void Load(const std::vector<glm::vec3>& vertices, const std::vector<Face>& faces);
+	void Load(const std::vector<glm::vec3>& vertices, const std::vector<glm::vec3>& normals, const std::vector<Face>& faces);
 	size_t FaceCount() const { return mFaces.size(); }
 	const glm::vec3& GetVertex(size_t index) const { return mVertices[index]; }
+	const glm::vec3& GetNormal(size_t index) const { return mNormals[index]; }
 	const Face& GetFace(size_t index) const { return mFaces[index]; }
 	
 	const glm::vec3& GetRotation() const { return mRotation; }
@@ -41,6 +42,7 @@ public:
 
 private:
 	std::vector<glm::vec3> mVertices;
+	std::vector<glm::vec3> mNormals;
 	std::vector<Face> mFaces;
 	glm::vec3 mRotation;
 	glm::vec3 mScale;
