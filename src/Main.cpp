@@ -130,7 +130,7 @@ class RendererApplication : public Application
 public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
-		, mDirectionalLight({ 0.0f, -1.0f, 1.0f })
+		, mDirectionalLight({ 0.0f, 0.0f, 1.0f })
 	{ }
 
     virtual void OnCreate() override
@@ -157,7 +157,7 @@ public:
         std::array<glm::vec4, 3> transformedVertices;
 
 		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		//mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
+		mMesh->AddRotation({ 1.0f, 0.0f, 0.0f });
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
@@ -188,8 +188,10 @@ public:
 				assert(transformedVertex.w == 1.0f);
             }
 
+			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
+
 			// Author converted 'transformedVertices' to vec3 (ignore this for now)
-            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, transformedVertices))  // Backface culling
+            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, faceNormal, transformedVertices))  // Backface culling
             {
                 Triangle projectedTriangle;
 
@@ -214,7 +216,7 @@ public:
 			    projectedTriangle.SetAverageDepth(averageDepth);
 
 				// Apply directional light flat shading
-                const float lightIntensity = mDirectionalLight.CalculateLightIntensity(transformedVertices);
+                const float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
                 uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
 				projectedTriangle.SetColor(shadedColor);
 
@@ -237,7 +239,7 @@ public:
         for (Triangle& triangle : mTrianglesToRender)
         {
             DrawFilledTriangle(triangle, triangle.GetColor());
-			DrawTriangle(triangle, 0xff0000ff);
+			//DrawTriangle(triangle, 0xff0000ff);
         }
 
 		mPixelRenderer->Render();
@@ -258,7 +260,7 @@ private:
 		return model;
     }
 
-    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const std::array<glm::vec4, 3>& transformedVertices)
+    glm::vec3 ComputeFaceNormal(const std::array<glm::vec4, 3>& transformedVertices)
     {
         // Check backface culling
         glm::vec3 vectorA = transformedVertices[0];  /*   A   */
@@ -269,17 +271,24 @@ private:
         glm::vec3 vectorAB = vectorB - vectorA;
         glm::vec3 vectorAC = vectorC - vectorA;
         vectorAB = glm::normalize(vectorAB);
-        vectorAC = glm::normalize(vectorAC);        
+        vectorAC = glm::normalize(vectorAC);
 
         // Compute the face normal (using cross product to find perpendicular)
-        glm::vec3 normal = glm::cross(vectorAB, vectorAC);
-		normal = glm::normalize(normal);
+        glm::vec3 faceNormal = glm::cross(vectorAB, vectorAC);
+        faceNormal = glm::normalize(faceNormal);
+
+		return faceNormal;
+    }
+
+    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const glm::vec3& faceNormal, const std::array<glm::vec4, 3>& transformedVertices)
+    {
+        glm::vec3 triangleMidpoint = (transformedVertices[0] + transformedVertices[1] + transformedVertices[2]) / 3.0f;
 
         // Find the vector between vertex A in the triangle and the camera origin
-        glm::vec3 cameraRay = cameraPosition - vectorA;
+        glm::vec3 cameraRay = cameraPosition - triangleMidpoint;
 		cameraRay = glm::normalize(cameraRay);        
 
-		float dotNormalCamera = glm::dot(normal, cameraRay);
+		float dotNormalCamera = glm::dot(faceNormal, cameraRay);
 
 		return dotNormalCamera > 0.0f;
     }
