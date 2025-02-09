@@ -104,7 +104,7 @@ glm::vec4 ProjectVec4(const glm::mat4& projection, const glm::vec4& vector)
 	
 	// Perform the perspective divide
     result.x /= result.w;
-	result.y /= result.w;
+	result.y /= -result.w;  // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
     result.z /= result.w;
 
     return result;

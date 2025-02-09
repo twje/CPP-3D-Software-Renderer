@@ -130,7 +130,7 @@ class RendererApplication : public Application
 public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
-		, mDirectionalLight({ 0.0f, 0.0f, 1.0f })
+		, mDirectionalLight({ 0.0f, -1.0f, 1.0f })
 	{ }
 
     virtual void OnCreate() override
@@ -157,7 +157,7 @@ public:
         std::array<glm::vec4, 3> transformedVertices;
 
 		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
+		//mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
@@ -176,7 +176,9 @@ public:
 
             faceVertices[0] = mMesh->GetVertex(face.a);
             faceVertices[1] = mMesh->GetVertex(face.b);
-            faceVertices[2] = mMesh->GetVertex(face.c);                       
+            faceVertices[2] = mMesh->GetVertex(face.c);
+
+
 
 			// Transform the vertices
             for (size_t j = 0; j < 3; j++)
@@ -202,7 +204,7 @@ public:
 
                     // Translate the projected points to the middle of the screen
                     projectedPoint.x += windowSize.x * 0.5f;
-                    projectedPoint.y += windowSize.y * 0.5f;
+                    projectedPoint.y += windowSize.y * 0.5f;					
 
                     projectedTriangle.SetPoint(j, projectedPoint);
                 }
@@ -232,7 +234,7 @@ public:
 			return a.GetAverageDepth() > b.GetAverageDepth();
 		});
 
-        for (const Triangle& triangle : mTrianglesToRender)
+        for (Triangle& triangle : mTrianglesToRender)
         {
             DrawFilledTriangle(triangle, triangle.GetColor());
 			DrawTriangle(triangle, 0xff0000ff);
