@@ -10,7 +10,7 @@ SDLTexture::SDLTexture(SDLRenderer & renderer, glm::uvec2 size)
     : mTexture(nullptr)
 {
     mTexture = SDL_CreateTexture(renderer.GetSDLRenderer(),
-        SDL_PIXELFORMAT_ARGB8888,
+        SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
         size.x,
         size.y);

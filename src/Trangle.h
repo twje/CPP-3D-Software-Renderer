@@ -35,6 +35,7 @@ public:
 	Triangle()
 		: mPoints(3)
 		, mAverageDepth(0.0f)
+		, mColor(0xFFFFFFFF)
 	{ }
 
 	void SetPoint(size_t index, const glm::vec2& point)
@@ -48,6 +49,11 @@ public:
 		mAverageDepth = depth;
 	}
 
+	void SetColor(uint32_t color)
+	{
+		mColor = color;
+	}
+
 	const glm::vec2& GetPoint(size_t index) const
 	{
 		assert(index >= 0 && index < 3);
@@ -59,7 +65,13 @@ public:
 		return mAverageDepth;
 	}
 
+	uint32_t GetColor() const
+	{
+		return mColor;
+	}
+
 private:
 	std::vector<glm::vec2> mPoints;
 	float mAverageDepth;
+	uint32_t mColor;
 };

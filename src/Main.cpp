@@ -3,6 +3,7 @@
 // Application
 #include "Mesh.h"
 #include "Matrix.h"
+#include "Light.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -129,6 +130,7 @@ class RendererApplication : public Application
 public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
+		, mDirectionalLight({ 0.0f, 0.0f, 1.0f })
 	{ }
 
     virtual void OnCreate() override
@@ -141,12 +143,12 @@ public:
 
     virtual void OnEvent(const SDL_Event& event) override
     { 
-        (void)event;
+		(void)event;
     }
 
     virtual void OnUpdate() override
     { 
-        static std::vector<glm::vec3> faceVertices(3);
+        static std::vector<glm::vec3> faceVertices(3);        
         
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
         const glm::vec3 cameraPosition { 0.0f, 0.0f, 0.0f };
@@ -154,7 +156,7 @@ public:
 		mTrianglesToRender.clear();
         std::array<glm::vec4, 3> transformedVertices;
 
-		mMesh->SetScale({ 1.0f, -1.0f, 1.0f });		
+		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
 		mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
@@ -163,8 +165,8 @@ public:
         glm::mat4 projectionMatrix = CreatePerspectiveProjectionMatrix(
             60.0f,
             windowSize.y / windowSize.x,
-            0.1f,
-            100.0f
+            0.2f,
+            110.0f
         );
 
 		// Build up a list of projected triangles to render
@@ -209,6 +211,11 @@ public:
 			    const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
 			    projectedTriangle.SetAverageDepth(averageDepth);
 
+				// Apply directional light flat shading
+                const float lightIntensity = mDirectionalLight.CalculateLightIntensity(transformedVertices);
+                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
+				projectedTriangle.SetColor(shadedColor);
+
                 mTrianglesToRender.push_back(projectedTriangle);
             }
         }
@@ -227,8 +234,8 @@ public:
 
         for (const Triangle& triangle : mTrianglesToRender)
         {
-            DrawFilledTriangle(triangle, 0xffffffff);
-			DrawTriangle(triangle, 0xffff00ff);
+            DrawFilledTriangle(triangle, triangle.GetColor());
+			DrawTriangle(triangle, 0xff0000ff);
         }
 
 		mPixelRenderer->Render();
@@ -237,17 +244,11 @@ public:
 private:
     glm::mat4 ComputeModelMatrix(const Mesh& mesh)
     {
-        /*
-            Converts object-space (local) coordinates into world-space coordinates.
-
-		    Order matters: First scale, then rotate, and finally translate
-		    Example: [T]*[R]*[S]*v
-        */
-
 		glm::mat4 model = glm::mat4(1.0f);
+        (void)mesh;
 
 		model *= CreateTranslationMatrix(mesh.GetTranslation());    // Applied 5th
-		model *= CreateRotateAboutZMatrix(mesh.GetRotation().z);    // Applied 4th
+	    model *= CreateRotateAboutZMatrix(mesh.GetRotation().z);    // Applied 4th
 		model *= CreateRotateAboutYMatrix(mesh.GetRotation().y);	// Applied 3rd
         model *= CreateRotateAboutXMatrix(mesh.GetRotation().x);    // Applied 2nd  
 		model *= CreateScaleMatrix(mesh.GetScale());                // Applied 1st
@@ -572,6 +573,9 @@ private:
     std::unique_ptr<PixelRenderer> mPixelRenderer;
 	std::vector<Triangle> mTrianglesToRender;
 	std::unique_ptr<Mesh> mMesh;
+    DirectionalLight mDirectionalLight;
+
+    float mNear = 2.0f;
 };
 
 //------------------------------------------------------------------------------
