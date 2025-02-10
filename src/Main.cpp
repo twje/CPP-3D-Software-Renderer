@@ -377,17 +377,11 @@ private:
 
         for (int32_t y = point0.y; y <= point2.y; y++)
         {
-            DrawLine(
-                static_cast<int32_t>(xStart),
-                y,
-                static_cast<int32_t>(xEnd),
-                y,
-                color
-            );
+            DrawLine({ static_cast<int32_t>(xStart), y }, { static_cast<int32_t>(xEnd), y }, color);
 
             xStart += inverseSlope1;
             xEnd += inverseSlope2;
-        }        
+        }
 	}
 
     void FillFlatTopTriangle(const glm::ivec2& point0, const glm::ivec2& point1, const glm::ivec2& point2, uint32_t color)
@@ -412,14 +406,8 @@ private:
 
         for (int32_t y = point2.y; y >= point0.y; y--)
         {
-            DrawLine(
-                static_cast<int32_t>(xStart),
-                y,
-                static_cast<int32_t>(xEnd),
-                y,
-                color
-            );
-
+			DrawLine({ static_cast<int32_t>(xStart), y }, { static_cast<int32_t>(xEnd), y}, color);
+            
             xStart -= inverseSlope1;
             xEnd -= inverseSlope2;
         }
@@ -431,36 +419,16 @@ private:
         const glm::ivec2 point1 = triangle.GetVertex(0).mPoint;
         const glm::ivec2 point2 = triangle.GetVertex(0).mPoint;
 
-        DrawLine(
-            static_cast<int32_t>(point0.x),
-            static_cast<int32_t>(point0.y),
-            static_cast<int32_t>(point1.x),
-            static_cast<int32_t>(point1.y),
-            color
-        );
-
-        DrawLine(
-            static_cast<int32_t>(point1.x),
-            static_cast<int32_t>(point1.y),
-            static_cast<int32_t>(point2.x),
-            static_cast<int32_t>(point2.y),
-            color
-        );
-
-        DrawLine(
-            static_cast<int32_t>(point2.x),
-            static_cast<int32_t>(point2.y),
-            static_cast<int32_t>(point0.x),
-            static_cast<int32_t>(point0.y),
-            color
-        );
+		DrawLine(point0, point1, color);
+		DrawLine(point1, point2, color);
+        DrawLine(point2, point0, color);
     }
 
-    void DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color)
+    void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
     {
 		// Use DDA algorithm to draw a line
-        const int32_t deltaX = x1 - x0;
-        const int32_t deltaY = y1 - y0;
+        const int32_t deltaX = point1.x - point0.x;
+        const int32_t deltaY = point1.y - point0.y;
 
 		// Take the greater of the two deltas
         const int32_t sideLength = abs(deltaX) >= abs(deltaY) ? abs(deltaX) : abs(deltaY);
@@ -468,8 +436,8 @@ private:
         const float xInc = deltaX / static_cast<float>(sideLength);
         const float yInc = deltaY / static_cast<float>(sideLength);
 
-		float currentX = static_cast<float>(x0);
-        float currentY = static_cast<float>(y0);
+		float currentX = static_cast<float>(point0.x);
+        float currentY = static_cast<float>(point0.y);
 
         for (int32_t i = 0; i <= sideLength; i++)
         {
