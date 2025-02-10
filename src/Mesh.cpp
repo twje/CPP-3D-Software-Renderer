@@ -16,10 +16,12 @@ Mesh::Mesh()
 { }
 
 //------------------------------------------------------------------------------
-void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<glm::vec3>& normals, const std::vector<Face>& faces)
+void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<glm::vec3>& normals, const std::vector<glm::vec2>& uvs,                
+                const std::vector<Face>& faces)
 {
     mVertices = vertices;
 	mNormals = normals;
+	mUvs = uvs;
     mFaces = faces;
 }
 
@@ -30,6 +32,7 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
 
     std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> uvs;
     std::vector<Face> faces;
 
     std::ifstream file(filepath);
@@ -59,7 +62,15 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
             {
                 normals.push_back(normal);
             }
-        }
+		}
+		else if (line[0] == 'v' && line[1] == 't') // UV
+		{
+			glm::vec2 uv;
+			if (sscanf_s(line.c_str(), "vt %f %f", &uv.x, &uv.y) == 2)
+			{
+				uvs.push_back(uv);
+			}
+		}
         else if (line[0] == 'f' && line[1] == ' ') // Face
         {
             Face face;
@@ -78,6 +89,6 @@ std::unique_ptr<Mesh> CreateMeshFromOBJFile(const fs::path& filepath)
         }
     }
 
-    mesh->Load(vertices, normals, faces);
+    mesh->Load(vertices, normals, uvs, faces);
     return mesh;
 }

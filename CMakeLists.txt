@@ -56,6 +56,7 @@ target_include_directories(3DRenderer PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${SDL2_INCLUDE_DIRS}
     ${glm_SOURCE_DIR}  # Include GLM headers
+    ${CMAKE_SOURCE_DIR}/vendor/stb
 )
 
 # Add compiler flags for MSVC

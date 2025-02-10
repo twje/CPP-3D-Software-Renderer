@@ -4,6 +4,7 @@
 #include "Mesh.h"
 #include "Matrix.h"
 #include "Light.h"
+#include "Texture.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -12,7 +13,6 @@
 
 // Third party
 #include <SDL.h>
-
 #include <glm/glm.hpp>
 
 /*
@@ -136,9 +136,10 @@ public:
     virtual void OnCreate() override
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
-		
+
         mMesh = CreateMeshFromOBJFile(ResolveAssetPath("f22.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("wall_cobblestone.png"));
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -192,17 +193,19 @@ public:
                 // Project the transformed vertices
                 for (size_t j = 0; j < 3; j++)
                 {
-                    glm::vec2 projectedPoint = ProjectVec4(projectionMatrix, transformedVertices[j]);
+					Vertex vertex;
+
+                    vertex.mPoint = ProjectVec4(projectionMatrix, transformedVertices[j]);
                     
                     // Scale into the view
-                    projectedPoint.x *= windowSize.x * 0.5f;
-                    projectedPoint.y *= windowSize.y * 0.5f;
+                    vertex.mPoint.x *= windowSize.x * 0.5f;
+                    vertex.mPoint.y *= windowSize.y * 0.5f;
 
                     // Translate the projected points to the middle of the screen
-                    projectedPoint.x += windowSize.x * 0.5f;
-					projectedPoint.y += windowSize.y * 0.5f;
+                    vertex.mPoint.x += windowSize.x * 0.5f;
+                    vertex.mPoint.y += windowSize.y * 0.5f;
 
-                    projectedTriangle.SetPoint(j, projectedPoint);
+                    projectedTriangle.SetVertex(j, vertex);
                 }
                 
 			    // Calculate the average depth of the triangle
@@ -216,19 +219,19 @@ public:
                 mTrianglesToRender.push_back(projectedTriangle);
             }
         }
+
+        // Painters algorithm
+        // Sort faces by average depth. This is a temporary solution until a depth buffer is added.
+        std::sort(mTrianglesToRender.begin(), mTrianglesToRender.end(), [](const Triangle& a, const Triangle& b)
+        {
+            return a.GetAverageDepth() > b.GetAverageDepth();
+        });
     }
 
     virtual void OnRender() override
     {
         mPixelRenderer->Clear(0x00000000);
         
-		// Painters algorithm
-		// Sort faces by average depth. This is a temporary solution until a depth buffer is added.
-		std::sort(mTrianglesToRender.begin(), mTrianglesToRender.end(), [](const Triangle& a, const Triangle& b)
-		{
-			return a.GetAverageDepth() > b.GetAverageDepth();
-		});
-
         for (Triangle& triangle : mTrianglesToRender)
         {
             DrawFilledTriangle(triangle, triangle.GetColor());
@@ -312,9 +315,9 @@ private:
          */
 	    
         // Some scan lines may not render when using `Vector2f`
-        glm::ivec2 point0 = glm::ivec2(triangle.GetPoint(0));
-        glm::ivec2 point1 = glm::ivec2(triangle.GetPoint(1));
-        glm::ivec2 point2 = glm::ivec2(triangle.GetPoint(2));
+        glm::ivec2 point0 = triangle.GetVertex(0).mPoint;
+        glm::ivec2 point1 = triangle.GetVertex(1).mPoint;
+        glm::ivec2 point2 = triangle.GetVertex(2).mPoint;
 
         if (point0.y > point1.y) 
         {
@@ -424,27 +427,31 @@ private:
 
     void DrawTriangle(const Triangle& triangle, uint32_t color)
     {
+		const glm::ivec2 point0 = triangle.GetVertex(0).mPoint;
+        const glm::ivec2 point1 = triangle.GetVertex(0).mPoint;
+        const glm::ivec2 point2 = triangle.GetVertex(0).mPoint;
+
         DrawLine(
-            static_cast<int32_t>(triangle.GetPoint(0).x),
-            static_cast<int32_t>(triangle.GetPoint(0).y),
-            static_cast<int32_t>(triangle.GetPoint(1).x),
-            static_cast<int32_t>(triangle.GetPoint(1).y),
+            static_cast<int32_t>(point0.x),
+            static_cast<int32_t>(point0.y),
+            static_cast<int32_t>(point1.x),
+            static_cast<int32_t>(point1.y),
             color
         );
 
         DrawLine(
-            static_cast<int32_t>(triangle.GetPoint(1).x),
-            static_cast<int32_t>(triangle.GetPoint(1).y),
-            static_cast<int32_t>(triangle.GetPoint(2).x),
-            static_cast<int32_t>(triangle.GetPoint(2).y),
+            static_cast<int32_t>(point1.x),
+            static_cast<int32_t>(point1.y),
+            static_cast<int32_t>(point2.x),
+            static_cast<int32_t>(point2.y),
             color
         );
 
         DrawLine(
-            static_cast<int32_t>(triangle.GetPoint(2).x),
-            static_cast<int32_t>(triangle.GetPoint(2).y),
-            static_cast<int32_t>(triangle.GetPoint(0).x),
-            static_cast<int32_t>(triangle.GetPoint(0).y),
+            static_cast<int32_t>(point2.x),
+            static_cast<int32_t>(point2.y),
+            static_cast<int32_t>(point0.x),
+            static_cast<int32_t>(point0.y),
             color
         );
     }
@@ -577,6 +584,7 @@ private:
     std::unique_ptr<PixelRenderer> mPixelRenderer;
 	std::vector<Triangle> mTrianglesToRender;
 	std::unique_ptr<Mesh> mMesh;
+    std::unique_ptr<Texture> mTexture;
     DirectionalLight mDirectionalLight;
 };
 

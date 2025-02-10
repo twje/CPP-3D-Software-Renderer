@@ -2,14 +2,28 @@
 
 // Includes
 //------------------------------------------------------------------------------
+// Core
+#include "Core/Utils.h"
+
+// Third party
+#include <glm/glm.hpp>
+
 // System
 #include <filesystem>
-#include <vector>
 
 // Type Alias
 //------------------------------------------------------------------------------
 namespace fs = std::filesystem;
 
 //------------------------------------------------------------------------------
-fs::path ResolveAssetPath(const fs::path& asset);
-std::vector<uint32_t> LoadPNGToRGBA(const fs::path& filepath, int32_t& outWidth, int32_t& outHeight);
+class Texture
+{
+public:
+	Texture(const fs::path& filepath)
+		: mData(LoadPNGToRGBA(filepath, mSize.x, mSize.y))
+	{ }
+
+private:
+	std::vector<uint32_t> mData;
+	glm::ivec2 mSize;
+};

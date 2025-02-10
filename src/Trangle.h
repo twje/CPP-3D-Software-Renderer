@@ -9,11 +9,11 @@
 #include <cstdint>
 
 //------------------------------------------------------------------------------
-struct Face
+struct Vertex
 {
-	std::array<int32_t, 3> mVertexIndicies;
-	std::array<int32_t, 3> mTextureIndicies;
-	std::array<int32_t, 3> mNormalIndicies;
+	glm::vec2 mPoint;
+	glm::vec2 mNormal;
+	glm::vec2 mUV;
 };
 
 //------------------------------------------------------------------------------
@@ -21,21 +21,14 @@ class Triangle
 {
 public:
 	Triangle()
-		: mPoints(3)
+		: mVertices(3)
 		, mAverageDepth(0.0f)
 		, mColor(0xFFFFFFFF)
 	{ }
-
-	void SetPoint(size_t index, const glm::vec2& point)
+	
+	void SetVertex(size_t index, const Vertex& vertex)
 	{
-		assert(index >= 0 && index < 3);
-		mPoints[index] = point;
-	}
-
-	void SetNormal(size_t index, const glm::vec2& normal)
-	{
-		assert(index >= 0 && index < 3);
-		mNormals[index] = normal;
+		mVertices[index] = vertex;
 	}
 
 	void SetAverageDepth(float depth)
@@ -46,23 +39,16 @@ public:
 	void SetColor(uint32_t color)
 	{
 		mColor = color;
-	}
-
-	const glm::vec2& GetPoint(size_t index) const
-	{
-		assert(index >= 0 && index < 3);
-		return mPoints[index];
-	}
-
-	const glm::vec2& GetNormal(size_t index) const
-	{
-		assert(index >= 0 && index < 3);
-		return mNormals[index];
-	}
+	}	
 
 	float GetAverageDepth() const
 	{
 		return mAverageDepth;
+	}
+
+	const Vertex& GetVertex(size_t index) const
+	{
+		return mVertices[index];
 	}
 
 	uint32_t GetColor() const
@@ -71,8 +57,7 @@ public:
 	}
 
 private:
-	std::vector<glm::vec2> mPoints;
-	std::vector<glm::vec2> mNormals;
+	std::vector<Vertex> mVertices;
 	float mAverageDepth;
 	uint32_t mColor;
 };
