@@ -15,6 +15,9 @@
 #include <SDL.h>
 #include <glm/glm.hpp>
 
+// System
+#include <functional>
+
 /*
     TODO:
 	Pressing 1 displays the wireframe and a small red dot for each triangle vertex
@@ -24,6 +27,10 @@
     Pressing c we should enable back-face culling
     Pressing d we should disable the back-face culling
 */
+
+// Type Alias
+//------------------------------------------------------------------------------
+using RasterTriangleFunc = std::function<void(const glm::ivec2& point, const std::array<Vertex, 3>& vertices)>;
 
 //------------------------------------------------------------------------------
 enum class CullMethod
@@ -234,8 +241,7 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            DrawFilledTriangle(triangle, triangle.GetColor());
-			//DrawTriangle(triangle, 0xff0000ff);
+            DrawTexturedTriangle(triangle, *mTexture);			
         }
 
 		mPixelRenderer->Render();
@@ -288,75 +294,48 @@ private:
 
 		return dotNormalCamera > 0.0f;
     }
+      
+	void DrawTriangleWireframe(const Triangle& triangle, uint32_t color)
+	{
+		DrawLine(triangle.GetVertex(0).mPoint, triangle.GetVertex(1).mPoint, color);
+		DrawLine(triangle.GetVertex(1).mPoint, triangle.GetVertex(2).mPoint, color);
+		DrawLine(triangle.GetVertex(2).mPoint, triangle.GetVertex(0).mPoint, color);
+	}
 
-    void DrawFilledTriangle(const Triangle& triangle, uint32_t color)
+    void DrawTexturedTriangle(const Triangle& triangle, const Texture& texture)
     {
-        /* 
-           Draw a filled triangle using the scanline algorithm by splitting it into 
-           flat-top and flat-bottom sections.
-           
-                      (x0,y0)
-                        / \
-                       /   \
-                      /     \
-                     /       \
-                    /         \
-               (x1,y1)------(Mx,My)  (Mid-point value)
-                   \_           \
-                      \_         \
-                         \_       \
-                            \_     \
-                               \    \
-                                 \_  \
-                                    \_\
-                                       \
-                                     (x2,y2)
-
-         */
-	    
-        // Some scan lines may not render when using `Vector2f`
-        glm::ivec2 point0 = triangle.GetVertex(0).mPoint;
-        glm::ivec2 point1 = triangle.GetVertex(1).mPoint;
-        glm::ivec2 point2 = triangle.GetVertex(2).mPoint;
-
-        if (point0.y > point1.y) 
-        {
-			std::swap(point0, point1);
-        }
-        if (point1.y > point2.y) 
-        {
-            std::swap(point1, point2);
-        }
-        if (point0.y > point1.y)
-        {
-            std::swap(point0, point1);
-        }
-		        
-        // No bottom triangle
-        if (point1.y == point2.y)
-        {           			
-		    FillFlatBottomTriangle(point0, point1, point2, color);
-        }
-        // No top triangle
-        else if (point0.y == point1.y)
-        {
-            FillFlatTopTriangle(point0, point1, point2, color);
-        }
-        else
-        {
-            // Compute mid point value (seperate flat-top and flat-bottom triangles)
-            glm::ivec2 m = {
-                (((point2.x - point0.x) * (point1.y - point0.y)) / (point2.y - point0.y)) + point0.x,
-                point1.y
-            };
-
-            FillFlatBottomTriangle(point0, point1, m, color);
-            FillFlatTopTriangle(point1, m, point2, color);
-        }
+		(void)texture;
+		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
+		{
+            (void)vertices;
+			mPixelRenderer->SetPixel(point.x, point.y, 0xffffffff);
+		});
     }
 
-	void FillFlatBottomTriangle(const glm::ivec2& point0, const glm::ivec2& point1, const glm::ivec2& point2, uint32_t color)
-	{   
+	void DrawFilledTriangle(const Triangle& triangle)
+	{
+		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
+		{
+			(void)vertices;
+			mPixelRenderer->SetPixel(point.x, point.y, triangle.GetColor());
+		});
+	}
+
+    void RasterTriangle(const Triangle& triangle, const RasterTriangleFunc& callback)
+    {
+        // Extract triangle vertices
+        std::array<Vertex, 3> vertices { triangle.GetVertex(0), triangle.GetVertex(1), triangle.GetVertex(2) };
+
+        // Sort vertices by y-coordinate (ascending)
+        std::sort(std::begin(vertices), std::end(vertices), [](const Vertex& a, const Vertex& b) {
+            return a.mPoint.y < b.mPoint.y;
+        });
+
+        // Store integer points
+        const glm::ivec2& point0 = vertices[0].mPoint;
+        const glm::ivec2& point1 = vertices[1].mPoint;
+        const glm::ivec2& point2 = vertices[2].mPoint;
+
         /*
                  (x0,y0)
                    / \
@@ -366,26 +345,35 @@ private:
                /         \
            (x1,y1)------(x2,y2)
         */
-
-        // y is the independent variable; the slope determines how x changes as y increases.
-        float inverseSlope1 = static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
-        float inverseSlope2 = static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
-
-        // Loop all the scanlines from top to bottom
-        float xStart = static_cast<float>(point0.x);
-        float xEnd = static_cast<float>(point0.x);
-
-        for (int32_t y = point0.y; y <= point2.y; y++)
+        const float longSlope = (point2.y - point0.y == 0)
+            ? 0.0f
+            : static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
+        
         {
-            DrawLine({ static_cast<int32_t>(xStart), y }, { static_cast<int32_t>(xEnd), y }, color);
+            const float shortSlope = (point1.y - point0.y == 0)
+                ? 0.0f
+                : static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
 
-            xStart += inverseSlope1;
-            xEnd += inverseSlope2;
+            if (point0.y - point1.y != 0)
+            {
+                for (int32_t y = point0.y; y <= point1.y; y++)
+                {
+                    int32_t xStart = static_cast<int32_t>(point1.x + (y - point1.y) * shortSlope);
+                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
+
+                    if (xStart > xEnd)
+                    {
+                        std::swap(xStart, xEnd);
+                    }
+
+                    for (int32_t x = xStart; x < xEnd; x++)
+                    {
+                        callback({ x, y }, vertices);
+                    }
+                }
+            }
         }
-	}
 
-    void FillFlatTopTriangle(const glm::ivec2& point0, const glm::ivec2& point1, const glm::ivec2& point2, uint32_t color)
-    {
         /*
            (x0,y0)------(x1,y1)
                \         /
@@ -395,34 +383,31 @@ private:
                    \ /
                  (x2,y2)
         */
-
-        // y is the independent variable; the slope determines how x changes as y increases.
-        float inverseSlope1 = static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
-        float inverseSlope2 = static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
-
-        // Loop all the scanlines from top to bottom
-        float xStart = static_cast<float>(point2.x);
-        float xEnd = static_cast<float>(point2.x);
-
-        for (int32_t y = point2.y; y >= point0.y; y--)
         {
-			DrawLine({ static_cast<int32_t>(xStart), y }, { static_cast<int32_t>(xEnd), y}, color);
-            
-            xStart -= inverseSlope1;
-            xEnd -= inverseSlope2;
+            const float shortSlope = (point2.y - point1.y == 0)
+                ? 0.0f
+                : static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
+
+            if (point2.y - point1.y != 0)
+            {
+                for (int32_t y = point1.y; y <= point2.y; y++)
+                {
+                    int32_t xStart = static_cast<int32_t>(point1.x + (y - point1.y) * shortSlope);
+                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
+
+                    if (xStart > xEnd)
+                    {
+                        std::swap(xStart, xEnd);
+                    }
+
+                    for (int32_t x = xStart; x < xEnd; x++)
+                    {
+                        callback({ x, y }, vertices);
+                    }
+                }
+            }
         }
-    }
-
-    void DrawTriangle(const Triangle& triangle, uint32_t color)
-    {
-		const glm::ivec2 point0 = triangle.GetVertex(0).mPoint;
-        const glm::ivec2 point1 = triangle.GetVertex(0).mPoint;
-        const glm::ivec2 point2 = triangle.GetVertex(0).mPoint;
-
-		DrawLine(point0, point1, color);
-		DrawLine(point1, point2, color);
-        DrawLine(point2, point0, color);
-    }
+    }    
 
     void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
     {
