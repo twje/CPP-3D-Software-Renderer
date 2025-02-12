@@ -331,10 +331,35 @@ private:
             return a.mPoint.y < b.mPoint.y;
         });
 
-        // Store integer points
+        // Use integer points to prevent gaps in scanlines
         const glm::ivec2& point0 = vertices[0].mPoint;
         const glm::ivec2& point1 = vertices[1].mPoint;
         const glm::ivec2& point2 = vertices[2].mPoint;
+
+        // Lambda to fill scanlines
+        auto fillScanlines = [&](const glm::ivec2& startPoint, const glm::ivec2& endPoint, float shortSlope, float longSlope) {
+            if (endPoint.y - startPoint.y != 0)
+            {
+                for (int32_t y = startPoint.y; y <= endPoint.y; y++)  // Short edge
+                {
+                    // Iterate over the short edge
+                    int32_t xStart = static_cast<int32_t>(startPoint.x + (y - startPoint.y) * shortSlope);
+
+                    // Iterate over the long edge (point0 is the top most vertex)
+                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
+
+                    if (xStart > xEnd)
+                    {
+                        std::swap(xStart, xEnd);
+                    }
+
+                    for (int32_t x = xStart; x < xEnd; x++)
+                    {
+                        callback({ x, y }, vertices);
+                    }
+                }
+            }
+        };
 
         /*
                  (x0,y0)
@@ -349,30 +374,11 @@ private:
             ? 0.0f
             : static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
         
-        {
-            const float shortSlope = (point1.y - point0.y == 0)
-                ? 0.0f
-                : static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
+        float shortSlope = (point1.y - point0.y == 0)
+            ? 0.0f
+            : static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
 
-            if (point0.y - point1.y != 0)
-            {
-                for (int32_t y = point0.y; y <= point1.y; y++)
-                {
-                    int32_t xStart = static_cast<int32_t>(point1.x + (y - point1.y) * shortSlope);
-                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
-
-                    if (xStart > xEnd)
-                    {
-                        std::swap(xStart, xEnd);
-                    }
-
-                    for (int32_t x = xStart; x < xEnd; x++)
-                    {
-                        callback({ x, y }, vertices);
-                    }
-                }
-            }
-        }
+        fillScanlines(point0, point1, shortSlope, longSlope);
 
         /*
            (x0,y0)------(x1,y1)
@@ -383,30 +389,11 @@ private:
                    \ /
                  (x2,y2)
         */
-        {
-            const float shortSlope = (point2.y - point1.y == 0)
-                ? 0.0f
-                : static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
+        shortSlope = (point2.y - point1.y == 0)
+           ? 0.0f
+           : static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
 
-            if (point2.y - point1.y != 0)
-            {
-                for (int32_t y = point1.y; y <= point2.y; y++)
-                {
-                    int32_t xStart = static_cast<int32_t>(point1.x + (y - point1.y) * shortSlope);
-                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
-
-                    if (xStart > xEnd)
-                    {
-                        std::swap(xStart, xEnd);
-                    }
-
-                    for (int32_t x = xStart; x < xEnd; x++)
-                    {
-                        callback({ x, y }, vertices);
-                    }
-                }
-            }
-        }
+        fillScanlines(point1, point2, shortSlope, longSlope);
     }    
 
     void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
