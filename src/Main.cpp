@@ -395,61 +395,10 @@ private:
         fillScanlines(point1, point2, shortSlope, longSlope);
     }    
 
-    /*
     void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
     {
-        const glm::vec3& weights = BaryCentricWeights(
-            vertices[0].mPoint,
-            vertices[1].mPoint,
-            vertices[2].mPoint,
-            point
-        );
-
-        const float alpha = weights.x;
-        const float beta = weights.y;
-        const float gamma = weights.z;
-
-        const float u0 = vertices[0].mUV.x;
-        const float v0 = vertices[0].mUV.y;
-
-        const float u1 = vertices[1].mUV.x;
-        const float v1 = vertices[1].mUV.y;
-
-        const float u2 = vertices[2].mUV.x;
-        const float v2 = vertices[2].mUV.y;
-
-        const float w0 = vertices[0].mPoint.w;
-        const float w1 = vertices[1].mPoint.w;
-        const float w2 = vertices[2].mPoint.w;
-
-        // Perform the interpolation of all U and V values using barycentric weights
-        float interpolatedU = alpha * (u0 / w0) + beta * (u1 / w1) + gamma * (u2 / w2);
-        float interpolatedV = alpha * (v0 / w0) + beta * (v1 / w1) + gamma * (v2 / w2);
-
-        float interpolatedReciprocalW = (1 / w0) * alpha + (1 / w1) * beta + (1 / w2) * gamma;
-
-        // Now we can divide back both interpolated values by 1/w
-        interpolatedU /= interpolatedReciprocalW;
-        interpolatedV /= interpolatedReciprocalW;
-
-        // Clamp the interpolated U and V values
-        interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
-        interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);
-
-        // Map the UV coordinate to the full texture width and height
-        const int32_t texX = static_cast<int32_t>(interpolatedU * (texture.GetSize().x - 1));
-        const int32_t texY = static_cast<int32_t>(interpolatedV * (texture.GetSize().y - 1));
-
-        mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
-    }
-    */
-
-    void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
-    {
-        const glm::vec3& weights = BaryCentricWeights(
-            vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint, point
-        );
-
+        const glm::vec3& weights = BaryCentricWeights(point, vertices);
+        
         const float alpha = weights.x;
         const float beta = weights.y;
         const float gamma = weights.z;
@@ -486,8 +435,13 @@ private:
         mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
     }
 
-    glm::vec3 BaryCentricWeights(const glm::vec2& a, const glm::vec2& b, const glm::vec2& c, const glm::vec2& p) 
+    glm::vec3 BaryCentricWeights(const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
     {
+		glm::vec2 a = vertices[0].mPoint;
+		glm::vec2 b = vertices[1].mPoint;
+		glm::vec2 c = vertices[2].mPoint;
+		glm::vec2 p = point;
+
         // Find the vectors between the vertices ABC and point p
         glm::vec2 ac = c - a;
         glm::vec2 ab = b - a;
