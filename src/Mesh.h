@@ -35,6 +35,7 @@ public:
 	size_t FaceCount() const { return mFaces.size(); }
 	const glm::vec3& GetVertex(size_t index) const { return mVertices[index]; }
 	const glm::vec3& GetNormal(size_t index) const { return mNormals[index]; }
+	const glm::vec2& GetUV(size_t index) const { return mUvs[index]; }
 	const Face& GetFace(size_t index) const { return mFaces[index]; }
 	
 	const glm::vec3& GetRotation() const { return mRotation; }

@@ -144,7 +144,7 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("f22.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
 		mTexture = std::make_unique<Texture>(ResolveAssetPath("wall_cobblestone.png"));
     }
@@ -165,7 +165,7 @@ public:
         std::array<glm::vec4, 3> transformedVertices;
 
 		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		mMesh->AddRotation({ 1.0f, 0.0f, 0.0f });
+		mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
@@ -213,6 +213,7 @@ public:
                     vertex.mPoint.y += windowSize.y * 0.5f;
 
                     projectedTriangle.SetVertex(j, vertex);
+                    projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
                 }
                 
 			    // Calculate the average depth of the triangle
@@ -284,10 +285,10 @@ private:
 
     bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const glm::vec3& faceNormal, const std::array<glm::vec4, 3>& transformedVertices)
     {
-        glm::vec3 triangleMidpoint = (transformedVertices[0] + transformedVertices[1] + transformedVertices[2]) / 3.0f;
+        //glm::vec3 triangleMidpoint = (transformedVertices[0] + transformedVertices[1] + transformedVertices[2]) / 3.0f;
 
         // Find the vector between vertex A in the triangle and the camera origin
-        glm::vec3 cameraRay = cameraPosition - triangleMidpoint;
+        glm::vec3 cameraRay = cameraPosition - glm::vec3(transformedVertices[0]);
 		cameraRay = glm::normalize(cameraRay);        
 
 		float dotNormalCamera = glm::dot(faceNormal, cameraRay);
@@ -303,12 +304,10 @@ private:
 	}
 
     void DrawTexturedTriangle(const Triangle& triangle, const Texture& texture)
-    {
-		(void)texture;
+    {		
 		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
 		{
-            (void)vertices;
-			mPixelRenderer->SetPixel(point.x, point.y, 0xffffffff);
+            DrawTexel(point, vertices, texture);
 		});
     }
 
@@ -395,6 +394,70 @@ private:
 
         fillScanlines(point1, point2, shortSlope, longSlope);
     }    
+
+    void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
+    {
+        const glm::vec3& weights = BaryCentricWeights(
+			vertices[0].mPoint,
+			vertices[1].mPoint,
+			vertices[2].mPoint,
+			point
+		);
+
+        const float alpha = weights.x;
+        const float beta = weights.y;
+        const float gamma = weights.z;
+
+		const float u0 = vertices[0].mUV.x;
+		const float v0 = vertices[0].mUV.y;
+
+		const float u1 = vertices[1].mUV.x;
+		const float v1 = vertices[1].mUV.y;
+		
+        const float u2 = vertices[2].mUV.x;
+		const float v2 = vertices[2].mUV.y;
+
+        // Perform the interpolation of all U and V values using barycentric weights
+        float interpolatedU = (u0 * alpha) + (u1 * beta) + (u2 * gamma);
+        float interpolatedV = (v0 * alpha) + (v1 * beta) + (v2 * gamma);
+
+
+		// Clamp the interpolated U and V values
+		interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
+		interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);       		
+
+        // Map the UV coordinate to the full texture width and height
+		const int32_t texX = static_cast<int32_t>(interpolatedU * (texture.GetSize().x - 1));
+		const int32_t texY = static_cast<int32_t>(interpolatedV * (texture.GetSize().y - 1));
+
+        mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
+    }
+
+    glm::vec3 BaryCentricWeights(const glm::vec2& a, const glm::vec2& b, const glm::vec2& c, const glm::vec2& p) 
+    {
+        // Find the vectors between the vertices ABC and point p
+        glm::vec2 ac = c - a;
+        glm::vec2 ab = b - a;
+        glm::vec2 ap = p - a;
+        glm::vec2 pc = c - p;
+        glm::vec2 pb = b - p;
+
+        // Compute the area of the full parallegram/triangle ABC using 2D cross product
+        float area_parallelogram_abc = (ac.x * ab.y - ac.y * ab.x); // || AC x AB ||
+
+        // Alpha is the area of the small parallelogram/triangle PBC divided by the area of the full parallelogram/triangle ABC
+        float alpha = (pc.x * pb.y - pc.y * pb.x) / area_parallelogram_abc;
+
+        // Beta is the area of the small parallelogram/triangle APC divided by the area of the full parallelogram/triangle ABC
+        float beta = (ac.x * ap.y - ac.y * ap.x) / area_parallelogram_abc;
+
+        // Weight gamma is easily found since barycentric coordinates always add up to 1.0
+        float gamma = 1 - alpha - beta;
+
+        glm::vec3 weights = { alpha, beta, gamma };
+        
+        return weights;
+    }
 
     void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
     {

@@ -16,6 +16,8 @@ fs::path ResolveAssetPath(const fs::path& asset)
 //------------------------------------------------------------------------------
 std::vector<uint32_t> LoadPNGToRGBA(const fs::path& filepath, int32_t& outWidth, int32_t& outHeight)
 {
+    stbi_set_flip_vertically_on_load(1);
+    
     int32_t channels;
     unsigned char* imageData = stbi_load(filepath.string().c_str(), &outWidth, &outHeight, &channels, STBI_rgb_alpha);
 

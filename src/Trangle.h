@@ -31,6 +31,11 @@ public:
 		mVertices[index] = vertex;
 	}
 
+	void SetUV(size_t index, const glm::vec2& uv)
+	{
+		mVertices[index].mUV = uv;
+	}
+
 	void SetAverageDepth(float depth)
 	{
 		mAverageDepth = depth;
