@@ -395,40 +395,93 @@ private:
         fillScanlines(point1, point2, shortSlope, longSlope);
     }    
 
+    /*
     void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
     {
         const glm::vec3& weights = BaryCentricWeights(
-			vertices[0].mPoint,
-			vertices[1].mPoint,
-			vertices[2].mPoint,
-			point
-		);
+            vertices[0].mPoint,
+            vertices[1].mPoint,
+            vertices[2].mPoint,
+            point
+        );
 
         const float alpha = weights.x;
         const float beta = weights.y;
         const float gamma = weights.z;
 
-		const float u0 = vertices[0].mUV.x;
-		const float v0 = vertices[0].mUV.y;
+        const float u0 = vertices[0].mUV.x;
+        const float v0 = vertices[0].mUV.y;
 
-		const float u1 = vertices[1].mUV.x;
-		const float v1 = vertices[1].mUV.y;
-		
+        const float u1 = vertices[1].mUV.x;
+        const float v1 = vertices[1].mUV.y;
+
         const float u2 = vertices[2].mUV.x;
-		const float v2 = vertices[2].mUV.y;
+        const float v2 = vertices[2].mUV.y;
+
+        const float w0 = vertices[0].mPoint.w;
+        const float w1 = vertices[1].mPoint.w;
+        const float w2 = vertices[2].mPoint.w;
 
         // Perform the interpolation of all U and V values using barycentric weights
-        float interpolatedU = (u0 * alpha) + (u1 * beta) + (u2 * gamma);
-        float interpolatedV = (v0 * alpha) + (v1 * beta) + (v2 * gamma);
+        float interpolatedU = alpha * (u0 / w0) + beta * (u1 / w1) + gamma * (u2 / w2);
+        float interpolatedV = alpha * (v0 / w0) + beta * (v1 / w1) + gamma * (v2 / w2);
 
+        float interpolatedReciprocalW = (1 / w0) * alpha + (1 / w1) * beta + (1 / w2) * gamma;
 
-		// Clamp the interpolated U and V values
-		interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
-		interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);       		
+        // Now we can divide back both interpolated values by 1/w
+        interpolatedU /= interpolatedReciprocalW;
+        interpolatedV /= interpolatedReciprocalW;
+
+        // Clamp the interpolated U and V values
+        interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
+        interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);
 
         // Map the UV coordinate to the full texture width and height
-		const int32_t texX = static_cast<int32_t>(interpolatedU * (texture.GetSize().x - 1));
-		const int32_t texY = static_cast<int32_t>(interpolatedV * (texture.GetSize().y - 1));
+        const int32_t texX = static_cast<int32_t>(interpolatedU * (texture.GetSize().x - 1));
+        const int32_t texY = static_cast<int32_t>(interpolatedV * (texture.GetSize().y - 1));
+
+        mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
+    }
+    */
+
+    void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
+    {
+        const glm::vec3& weights = BaryCentricWeights(
+            vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint, point
+        );
+
+        const float alpha = weights.x;
+        const float beta = weights.y;
+        const float gamma = weights.z;
+
+        const glm::vec2& uv0 = vertices[0].mUV;
+        const glm::vec2& uv1 = vertices[1].mUV; 
+        const glm::vec2& uv2 = vertices[2].mUV;
+        
+        const float& w0 = vertices[0].mPoint.w;
+        const float& w1 = vertices[1].mPoint.w;
+        const float& w2 = vertices[2].mPoint.w;
+
+        // Perform perspective-correct interpolation of UV coordinates
+        const float invW0 = 1 / w0;
+        const float invW1 = 1 / w1;
+        const float invW2 = 1 / w2;
+
+        float interpolatedU = alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2);
+        float interpolatedV = alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2);
+        float interpolatedReciprocalW = alpha * invW0 + beta * invW1 + gamma * invW2;
+
+        interpolatedU /= interpolatedReciprocalW;
+        interpolatedV /= interpolatedReciprocalW;
+
+        // Clamp and map UV coordinates to texture space
+        interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
+        interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);
+
+        const glm::ivec2 texSize = texture.GetSize();
+
+        const int32_t texX = static_cast<int32_t>(interpolatedU * (texSize.x - 1));
+        const int32_t texY = static_cast<int32_t>(interpolatedV * (texSize.y - 1));
 
         mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
     }
