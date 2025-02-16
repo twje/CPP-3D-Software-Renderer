@@ -102,6 +102,43 @@ private:
 };
 
 //------------------------------------------------------------------------------
+class ZBuffer
+{
+public:
+    ZBuffer(AppContext& context)
+        : mBuffer(context.GetWindowSize().x* context.GetWindowSize().y, 1.0f)
+		, mSize(context.GetWindowSize())
+    { }
+
+    void Clear()
+    {
+		std::fill(mBuffer.begin(), mBuffer.end(), 1.0f);
+    }
+
+    void SetDepth(int32_t x, int32_t y, float depth)
+    {   
+        if (x >= 0 && x < mSize.x && y >= 0 && y < mSize.y)
+        {
+            mBuffer[y * mSize.x + x] = depth;
+        }		
+    }
+
+    float GetDepth(int32_t x, int32_t y) const
+    {        
+        if (x >= 0 && x < mSize.x && y >= 0 && y < mSize.y)
+		{
+            return mBuffer[y * mSize.x + x];
+		}
+
+		return 1.0f;		
+    }
+
+private:
+    std::vector<float> mBuffer;
+	glm::ivec2 mSize;
+};
+
+//------------------------------------------------------------------------------
 class PixelRenderer
 {
 public:
@@ -138,15 +175,16 @@ public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
 		, mDirectionalLight({ 0.0f, 0.0f, 1.0f })
+		, mZBuffer(GetContext())
 	{ }
 
     virtual void OnCreate() override
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("wall_cobblestone.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("drone.png"));
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -160,12 +198,13 @@ public:
         
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
         const glm::vec3 cameraPosition { 0.0f, 0.0f, 0.0f };
-               		
+               
+		mZBuffer.Clear();
 		mTrianglesToRender.clear();
         std::array<glm::vec4, 3> transformedVertices;
 
 		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		mMesh->AddRotation({ 1.0f, 1.0f, 1.0f });
+		mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
@@ -193,7 +232,7 @@ public:
 			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
 
 			// Author converted 'transformedVertices' to vec3 (ignore this for now)
-            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, faceNormal, transformedVertices))  // Backface culling
+            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, faceNormal, transformedVertices))  // Backface culling            
             {
                 Triangle projectedTriangle;
 
@@ -217,8 +256,6 @@ public:
                 }
                 
 			    // Calculate the average depth of the triangle
-			    const float averageDepth = (transformedVertices[0].z + transformedVertices[1].z + transformedVertices[2].z) / 3.0f;
-			    projectedTriangle.SetAverageDepth(averageDepth);
                 float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
 
                 uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
@@ -227,13 +264,6 @@ public:
                 mTrianglesToRender.push_back(projectedTriangle);
             }
         }
-
-        // Painters algorithm
-        // Sort faces by average depth. This is a temporary solution until a depth buffer is added.
-        std::sort(mTrianglesToRender.begin(), mTrianglesToRender.end(), [](const Triangle& a, const Triangle& b)
-        {
-            return a.GetAverageDepth() > b.GetAverageDepth();
-        });
     }
 
     virtual void OnRender() override
@@ -406,33 +436,30 @@ private:
         const glm::vec2& uv0 = vertices[0].mUV;
         const glm::vec2& uv1 = vertices[1].mUV; 
         const glm::vec2& uv2 = vertices[2].mUV;
-        
-        const float& w0 = vertices[0].mPoint.w;
-        const float& w1 = vertices[1].mPoint.w;
-        const float& w2 = vertices[2].mPoint.w;
-
+                
         // Perform perspective-correct interpolation of UV coordinates
-        const float invW0 = 1 / w0;
-        const float invW1 = 1 / w1;
-        const float invW2 = 1 / w2;
+        const float invW0 = 1.0f / vertices[0].mPoint.w;
+        const float invW1 = 1.0f / vertices[1].mPoint.w;;
+        const float invW2 = 1.0f / vertices[2].mPoint.w;;
 
         float interpolatedU = alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2);
         float interpolatedV = alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2);
+        
         float interpolatedReciprocalW = alpha * invW0 + beta * invW1 + gamma * invW2;
 
         interpolatedU /= interpolatedReciprocalW;
         interpolatedV /= interpolatedReciprocalW;
 
-        // Clamp and map UV coordinates to texture space
-        interpolatedU = glm::clamp(interpolatedU, 0.0f, 1.0f);
-        interpolatedV = glm::clamp(interpolatedV, 0.0f, 1.0f);
-
         const glm::ivec2 texSize = texture.GetSize();
 
-        const int32_t texX = static_cast<int32_t>(interpolatedU * (texSize.x - 1));
-        const int32_t texY = static_cast<int32_t>(interpolatedV * (texSize.y - 1));
+        const int32_t texX = std::abs(static_cast<int32_t>(interpolatedU * (texSize.x - 1))) % texSize.x;
+        const int32_t texY = std::abs(static_cast<int32_t>(interpolatedV * (texSize.y - 1))) % texSize.y;
 
-        mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
+        if ((1.0f - interpolatedReciprocalW) < mZBuffer.GetDepth(point.x, point.y))
+        {
+            mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
+			mZBuffer.SetDepth(point.x, point.y, 1.0f - interpolatedReciprocalW);
+        }
     }
 
     glm::vec3 BaryCentricWeights(const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
@@ -596,6 +623,7 @@ private:
 	std::unique_ptr<Mesh> mMesh;
     std::unique_ptr<Texture> mTexture;
     DirectionalLight mDirectionalLight;
+	ZBuffer mZBuffer;
 };
 
 //------------------------------------------------------------------------------

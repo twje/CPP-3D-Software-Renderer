@@ -22,7 +22,6 @@ class Triangle
 public:
 	Triangle()
 		: mVertices(3)
-		, mAverageDepth(0.0f)
 		, mColor(0xFFFFFFFF)
 	{ }
 	
@@ -35,21 +34,11 @@ public:
 	{
 		mVertices[index].mUV = uv;
 	}
-
-	void SetAverageDepth(float depth)
-	{
-		mAverageDepth = depth;
-	}
-
+	
 	void SetColor(uint32_t color)
 	{
 		mColor = color;
 	}	
-
-	float GetAverageDepth() const
-	{
-		return mAverageDepth;
-	}
 
 	const Vertex& GetVertex(size_t index) const
 	{
@@ -62,7 +51,6 @@ public:
 	}
 
 private:
-	std::vector<Vertex> mVertices;
-	float mAverageDepth;
+	std::vector<Vertex> mVertices;	
 	uint32_t mColor;
 };
