@@ -12,4 +12,5 @@ glm::mat4 CreateRotateAboutYMatrix(float degrees);
 glm::mat4 CreateRotateAboutZMatrix(float degrees);
 glm::mat4 CreateTranslationMatrix(const glm::vec3& translation);
 glm::mat4 CreatePerspectiveProjectionMatrix(float fov, float aspect, float znear, float zfar);
+glm::mat4 CreateLookAt(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up);
 glm::vec4 ProjectVec4(const glm::mat4& projection, const glm::vec4& model);

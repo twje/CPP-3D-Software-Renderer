@@ -169,6 +169,28 @@ private:
 };
 
 //------------------------------------------------------------------------------
+class Camera
+{
+public:
+	Camera()
+		: mPosition(0.0f, 0.0f, 0.0f)
+		, mDirection(0.0f, 1.0f, 0.0f)
+	{ }
+
+	void AddPosition(const glm::vec3& position)
+	{
+		mPosition += position;
+	}
+
+	const glm::vec3& GetPosition() const { return mPosition; }
+	const glm::vec3& GetDirection() const { return mDirection; }
+
+private:
+	glm::vec3 mPosition;
+	glm::vec3 mDirection;	
+};
+
+//------------------------------------------------------------------------------
 class RendererApplication : public Application
 {
 public:
@@ -182,9 +204,9 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("crab.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("drone.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("crab.png"));
     }
 
     virtual void OnEvent(const SDL_Event& event) override
@@ -196,8 +218,7 @@ public:
     { 
         static std::vector<glm::vec3> faceVertices(3);        
         
-        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
-        const glm::vec3 cameraPosition { 0.0f, 0.0f, 0.0f };
+        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());        
                
 		mZBuffer.Clear();
 		mTrianglesToRender.clear();
@@ -208,7 +229,14 @@ public:
 		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
-        
+
+		// Camera
+		mCamera.AddPosition({ 0.008f, 0.008f, 0.0f });
+
+		glm::vec3 target = { 0.0f, 0.0f, 4.0f };
+		glm::vec3 direction = { 0.0f, 1.0f, 0.0f };         
+        glm::mat4 viewMatrix = CreateLookAt(mCamera.GetPosition(), target, direction);
+
         glm::mat4 projectionMatrix = CreatePerspectiveProjectionMatrix(
             60.0f,
             windowSize.y / windowSize.x,
@@ -225,14 +253,20 @@ public:
             for (size_t j = 0; j < 3; j++)
             {
                 glm::vec3 vertex = mMesh->GetVertex(face.mVertexIndicies[j]);
-                transformedVertices[j] = modelMatrix * glm::vec4(vertex, 1.0f);                
+                
+                transformedVertices[j] = modelMatrix * glm::vec4(vertex, 1.0f);
+				transformedVertices[j] = viewMatrix * transformedVertices[j];
+
 				assert(transformedVertices[j].w == 1.0f);
             }
 
 			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
 
 			// Author converted 'transformedVertices' to vec3 (ignore this for now)
-            if (IsTriangleFrontFaceVisibleToCamera(cameraPosition, faceNormal, transformedVertices))  // Backface culling            
+			glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
+            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices)) {}  // Backface culling            
+            
+            
             {
                 Triangle projectedTriangle;
 
@@ -243,6 +277,9 @@ public:
 
                     vertex.mPoint = ProjectVec4(projectionMatrix, transformedVertices[j]);
                     
+                    // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
+					vertex.mPoint.y *= -1.0f;
+
                     // Scale into the view
                     vertex.mPoint.x *= windowSize.x * 0.5f;
                     vertex.mPoint.y *= windowSize.y * 0.5f;
@@ -624,6 +661,7 @@ private:
     std::unique_ptr<Texture> mTexture;
     DirectionalLight mDirectionalLight;
 	ZBuffer mZBuffer;
+	Camera mCamera;
 };
 
 //------------------------------------------------------------------------------
