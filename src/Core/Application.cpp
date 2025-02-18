@@ -37,10 +37,10 @@ void Application::Run()
             SDL_Delay(static_cast<uint32_t>(timeToWait));
         }
         
-        float timeslice = (SDL_GetTicks() - previousFrameTime) / 1000.0f;        
+        float timeslice = (SDL_GetTicks() - previousFrameTime) / 1000.0f;
         previousFrameTime = SDL_GetTicks();
         
-        ProcessEvents();
+        ProcessEvents(timeslice);
         OnUpdate(timeslice);
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -51,7 +51,7 @@ void Application::Run()
 }
 
 //------------------------------------------------------------------------------
-void Application::ProcessEvents()
+void Application::ProcessEvents(float timeslice)
 {
     SDL_Event event;
     while (SDL_PollEvent(&event))
@@ -67,6 +67,6 @@ void Application::ProcessEvents()
             return;
         }
 
-        OnEvent(event);  // Delegate to virtual method
+        OnEvent(event, timeslice);  // Delegate to virtual method
     }
 }

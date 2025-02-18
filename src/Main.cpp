@@ -174,25 +174,16 @@ class Camera
 public:
 	Camera()
 		: mPosition(0.0f, 0.0f, 0.0f)
-		, mDirection(0.0f, 1.0f, 0.0f)
+		, mDirection(0.0f, 0.0f, 1.0f)
+		, mFowardVelocity(0.0f, 0.0f, 0.0f)
+		, mYawAngle(0.0f)
 	{ }
-
-	void AddPosition(const glm::vec3& position)
-	{
-		mPosition += position;
-	}
-
-	void SetPosition(const glm::vec3& position)
-	{
-		mPosition = position;
-	}
-
-	const glm::vec3& GetPosition() const { return mPosition; }
-	const glm::vec3& GetDirection() const { return mDirection; }
-
-private:
+	
+	// w,a,s,d
 	glm::vec3 mPosition;
-	glm::vec3 mDirection;	
+	glm::vec3 mDirection;           // Direction camera is pointing
+	glm::vec3 mFowardVelocity;      // Direction camera is moving
+    float mYawAngle;
 };
 
 //------------------------------------------------------------------------------
@@ -214,15 +205,42 @@ public:
 		mTexture = std::make_unique<Texture>(ResolveAssetPath("crab.png"));
     }
 
-    virtual void OnEvent(const SDL_Event& event) override
+    virtual void OnEvent(const SDL_Event& event, float timeslice) override
     { 
-		(void)event;
+		if (event.type == SDL_KEYDOWN)
+		{			
+            if (event.key.keysym.sym == SDLK_UP)
+            {
+                mCamera.mPosition.y += 3.0f * timeslice;
+            }
+            else if (event.key.keysym.sym == SDLK_DOWN)
+            {
+                mCamera.mPosition.y -= 3.0f * timeslice;
+            }
+            else if (event.key.keysym.sym == SDLK_a)
+            {
+				mCamera.mYawAngle += 1.0f * timeslice;
+            }
+            else if (event.key.keysym.sym == SDLK_d)
+            {
+                mCamera.mYawAngle -= 1.0f * timeslice;
+            }
+            else if (event.key.keysym.sym == SDLK_w)
+            {
+				mCamera.mFowardVelocity = mCamera.mDirection * 5.0f * timeslice;
+				mCamera.mPosition += mCamera.mFowardVelocity;					
+            }
+            else if (event.key.keysym.sym == SDLK_s)
+            {
+                mCamera.mFowardVelocity = mCamera.mDirection * 5.0f * timeslice;
+                mCamera.mPosition -= mCamera.mFowardVelocity;
+            }
+		}
     }
 
     virtual void OnUpdate(float timelice) override
     { 		
-		std::cout << "Time slice: " << timelice << std::endl;
-        static std::vector<glm::vec3> faceVertices(3);        
+		(void)timelice; // Unused
         
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());        
                
@@ -230,18 +248,20 @@ public:
 		mTrianglesToRender.clear();
         std::array<glm::vec4, 3> transformedVertices;
 
-		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		mMesh->AddRotation({ 0.0f, timelice * 45.0f, 0.0f });
+		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });				
 		mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
 
-		// Camera
-        mCamera.SetPosition({ -10.0f, 10.0f, -10.0f });
+		// Init with z-axis pointing forward
+		glm::vec3 target { 0.0f, 0.0f, 1.0f };
+        mCamera.mDirection = CreateRotateAboutYMatrix(glm::degrees(mCamera.mYawAngle)) * glm::vec4(target, 0.0f);
 
-		glm::vec3 target = { 0.0f, 0.0f, 4.0f };
-		glm::vec3 direction = { 0.0f, 1.0f, 0.0f };         
-        glm::mat4 viewMatrix = CreateLookAt(mCamera.GetPosition(), target, direction);
+		// Offset the camera position in the direction where the camera is pointing at
+        target = mCamera.mPosition + mCamera.mDirection;
+		glm::vec3 up { 0.0f, 1.0f, 0.0f };
+
+        glm::mat4 viewMatrix = CreateLookAt(mCamera.mPosition, target, up);
 
         glm::mat4 projectionMatrix = CreatePerspectiveProjectionMatrix(
             60.0f,
