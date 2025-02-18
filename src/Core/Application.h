@@ -28,7 +28,7 @@ protected:
     // Lifecycle Methods (Meant for Subclassing)
     virtual void OnCreate() { }
     virtual void OnEvent(const SDL_Event& event) { (void)event; }
-    virtual void OnUpdate() { }
+    virtual void OnUpdate(float timeslice) { (void)timeslice; }
     virtual void OnRender() { }
 
 private:

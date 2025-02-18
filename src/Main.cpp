@@ -182,6 +182,11 @@ public:
 		mPosition += position;
 	}
 
+	void SetPosition(const glm::vec3& position)
+	{
+		mPosition = position;
+	}
+
 	const glm::vec3& GetPosition() const { return mPosition; }
 	const glm::vec3& GetDirection() const { return mDirection; }
 
@@ -214,8 +219,9 @@ public:
 		(void)event;
     }
 
-    virtual void OnUpdate() override
-    { 
+    virtual void OnUpdate(float timelice) override
+    { 		
+		std::cout << "Time slice: " << timelice << std::endl;
         static std::vector<glm::vec3> faceVertices(3);        
         
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());        
@@ -225,13 +231,13 @@ public:
         std::array<glm::vec4, 3> transformedVertices;
 
 		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });		
-		mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
-		mMesh->SetTranslation({ 0.0f, 0.0f, 10.0f });
+		mMesh->AddRotation({ 0.0f, timelice * 45.0f, 0.0f });
+		mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
 
 		// Camera
-		mCamera.AddPosition({ 0.008f, 0.008f, 0.0f });
+        mCamera.SetPosition({ -10.0f, 10.0f, -10.0f });
 
 		glm::vec3 target = { 0.0f, 0.0f, 4.0f };
 		glm::vec3 direction = { 0.0f, 1.0f, 0.0f };         
@@ -264,9 +270,7 @@ public:
 
 			// Author converted 'transformedVertices' to vec3 (ignore this for now)
 			glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
-            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices)) {}  // Backface culling            
-            
-            
+            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))                        
             {
                 Triangle projectedTriangle;
 
