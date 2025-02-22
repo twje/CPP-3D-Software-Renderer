@@ -5,6 +5,7 @@
 #include "Matrix.h"
 #include "Light.h"
 #include "Texture.h"
+#include "Clipping.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -200,9 +201,25 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("crab.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("crab.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("cube.png"));
+
+        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
+
+		const Angle fov = Angle::Degrees(60.0f);
+		const float aspect = windowSize.y / windowSize.x;
+        const float near = 0.2f;
+		const float far = 110.0f;
+
+        mProjectionMatrix = CreatePerspectiveProjectionMatrix(
+            fov.AsDegrees(),
+            aspect,
+            near,
+            far
+        );
+
+		mClippingPlanes = ComputePerspectiveFrustrumPlanes(fov, near, far);
     }
 
     virtual void OnEvent(const SDL_Event& event, float timeslice) override
@@ -242,7 +259,7 @@ public:
     { 		
 		(void)timelice; // Unused
         
-        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());        
+        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
                
 		mZBuffer.Clear();
 		mTrianglesToRender.clear();
@@ -263,16 +280,15 @@ public:
 
         glm::mat4 viewMatrix = CreateLookAt(mCamera.mPosition, target, up);
 
-        glm::mat4 projectionMatrix = CreatePerspectiveProjectionMatrix(
-            60.0f,
-            windowSize.y / windowSize.x,
-            0.2f,
-            110.0f
-        );
-
 		// Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
+            // Only want to show front face of cube for testing purposes
+			if (i != 4) 
+            {
+				continue;
+			}
+
 			const Face& face = mMesh->GetFace(i);
 
 			// Transform the vertices
@@ -292,6 +308,11 @@ public:
 			glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
             if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))                        
             {
+				// Clipping (enter with 1 triangle, exit with 0 or more triangles)
+                FrustumClippedPolygon polygon(mClippingPlanes, transformedVertices);
+				polygon.ClipWithFrustum();
+
+                // TODO: after clipping, we need to break the polygon into triangles
                 Triangle projectedTriangle;
 
                 // Project the transformed vertices
@@ -299,7 +320,7 @@ public:
                 {
 					Vertex vertex;
 
-                    vertex.mPoint = ProjectVec4(projectionMatrix, transformedVertices[j]);
+                    vertex.mPoint = ProjectVec4(mProjectionMatrix, transformedVertices[j]);
                     
                     // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
 					vertex.mPoint.y *= -1.0f;
@@ -686,6 +707,8 @@ private:
     DirectionalLight mDirectionalLight;
 	ZBuffer mZBuffer;
 	Camera mCamera;
+    glm::mat4 mProjectionMatrix;
+	std::array<Plane, 6> mClippingPlanes;
 };
 
 //------------------------------------------------------------------------------
