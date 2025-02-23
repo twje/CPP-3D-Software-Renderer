@@ -76,8 +76,8 @@ std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>
     // Start with the triangle's vertices
     std::array<glm::vec3, kMaxVertices> vertices {
         triangleVertices[0],
-        triangleVertices[2],
-        triangleVertices[1]
+        triangleVertices[1],
+        triangleVertices[2]
     };
     size_t vertexCount = 3;
 
@@ -118,12 +118,12 @@ std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>
     std::vector<std::array<glm::vec4, 3>> clippedTriangles;
     if (vertexCount >= 3)
     {
-        for (size_t i = 1; i < vertexCount - 1; ++i)
+        for (size_t i = 0; i < vertexCount - 2; i++)
         {
             clippedTriangles.push_back({
                 glm::vec4(vertices[0], 1.0f),
-                glm::vec4(vertices[i], 1.0f),
-                glm::vec4(vertices[i + 1], 1.0f)
+                glm::vec4(vertices[i + 1], 1.0f),
+                glm::vec4(vertices[i + 2], 1.0f)
             });
         }
     }

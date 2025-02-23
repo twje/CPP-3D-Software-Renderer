@@ -261,7 +261,7 @@ public:
     {
         (void)timelice; // Unused
 
-        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
+        const glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
         mZBuffer.Clear();
         mTrianglesToRender.clear();
@@ -278,13 +278,12 @@ public:
 
         // Offset the camera position in the direction where the camera is pointing at
         target = mCamera.mPosition + mCamera.mDirection;
-        glm::vec3 up{ 0.0f, 1.0f, 0.0f };
-
+        glm::vec3 up { 0.0f, 1.0f, 0.0f };
         glm::mat4 viewMatrix = CreateLookAt(mCamera.mPosition, target, up);
 
         // Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
-        {
+        {            
             const Face& face = mMesh->GetFace(i);
 
             // Transform the vertices
@@ -306,8 +305,8 @@ public:
                 continue;
             }
             
-            // Clipping (enter with 1 triangle, exit with 0 or more triangles)            
-            for (std::array<glm::vec4, 3>&vertices : ClipWithFrustum(mClippingPlanes, transformedVertices))
+            // Clipping (enter with 1 triangle, exit with 0 or more triangles)        
+            for (std::array<glm::vec4, 3>& vertices : ClipWithFrustum(mClippingPlanes, transformedVertices))
             {
                 Triangle projectedTriangle;
 
@@ -315,6 +314,7 @@ public:
                 {
                     Vertex& vertex = projectedTriangle.mVertices[j];
 
+                    vertex.mUV = mMesh->GetUV(face.mTextureIndicies[j]);
                     vertex.mPoint = ProjectVec4(mProjectionMatrix, vertices[j]);
 
                     // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
@@ -329,9 +329,8 @@ public:
                     vertex.mPoint.y += windowSize.y * 0.5f;                    
                 }
 
-                // Calculate the average depth of the triangle
+				// Apply directional lighting
                 float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
-
                 uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.mColor, lightIntensity);
 				projectedTriangle.mColor = shadedColor;
 
@@ -346,7 +345,7 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            bool drawTextured = false;
+            bool drawTextured = true;
 			bool drawFlatShaded = false;
 
             if (drawTextured)
@@ -414,8 +413,6 @@ private:
 
     bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const glm::vec3& faceNormal, const std::array<glm::vec4, 3>& transformedVertices)
     {
-        //glm::vec3 triangleMidpoint = (transformedVertices[0] + transformedVertices[1] + transformedVertices[2]) / 3.0f;
-
         // Find the vector between vertex A in the triangle and the camera origin
         glm::vec3 cameraRay = cameraPosition - glm::vec3(transformedVertices[0]);
 		cameraRay = glm::normalize(cameraRay);        
