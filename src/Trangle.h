@@ -17,40 +17,8 @@ struct Vertex
 };
 
 //------------------------------------------------------------------------------
-class Triangle
+struct Triangle 
 {
-public:
-	Triangle()
-		: mVertices(3)
-		, mColor(0xFFFFFFFF)
-	{ }
-	
-	void SetVertex(size_t index, const Vertex& vertex)
-	{
-		mVertices[index] = vertex;
-	}
-
-	void SetUV(size_t index, const glm::vec2& uv)
-	{
-		mVertices[index].mUV = uv;
-	}
-	
-	void SetColor(uint32_t color)
-	{
-		mColor = color;
-	}	
-
-	const Vertex& GetVertex(size_t index) const
-	{
-		return mVertices[index];
-	}
-
-	uint32_t GetColor() const
-	{
-		return mColor;
-	}
-
-private:
-	std::vector<Vertex> mVertices;	
-	uint32_t mColor;
+	std::array<Vertex, 3> mVertices { };
+	uint32_t mColor = 0xFFFFFFFF;
 };

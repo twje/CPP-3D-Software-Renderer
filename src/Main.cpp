@@ -313,7 +313,7 @@ public:
 
                 for (size_t j = 0; j < 3; j++)
                 {
-                    Vertex vertex;
+                    Vertex& vertex = projectedTriangle.mVertices[j];
 
                     vertex.mPoint = ProjectVec4(mProjectionMatrix, vertices[j]);
 
@@ -326,17 +326,14 @@ public:
 
                     // Translate the projected points to the middle of the screen
                     vertex.mPoint.x += windowSize.x * 0.5f;
-                    vertex.mPoint.y += windowSize.y * 0.5f;
-
-                    projectedTriangle.SetVertex(j, vertex);
-                    projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
+                    vertex.mPoint.y += windowSize.y * 0.5f;                    
                 }
 
                 // Calculate the average depth of the triangle
                 float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
 
-                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
-                projectedTriangle.SetColor(shadedColor);
+                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.mColor, lightIntensity);
+				projectedTriangle.mColor = shadedColor;
 
                 mTrianglesToRender.push_back(projectedTriangle);
             }
@@ -367,9 +364,9 @@ public:
 				DrawTriangleWireframe(triangle, 0xFFFFFFFF);
                 
                 // Draw a small red dot for each vertex
-                glm::ivec4 point0 = triangle.GetVertex(0).mPoint;
-                glm::ivec4 point1 = triangle.GetVertex(1).mPoint;
-                glm::ivec4 point2 = triangle.GetVertex(2).mPoint;
+                glm::ivec4 point0 = triangle.mVertices[0].mPoint;
+                glm::ivec4 point1 = triangle.mVertices[1].mPoint;
+                glm::ivec4 point2 = triangle.mVertices[2].mPoint;
 
                 DrawRectangle(point0.x - 1, point0.y - 1, 3, 3, 0xFF0000FF);
                 DrawRectangle(point1.x - 1, point1.y - 1, 3, 3, 0xFF0000FF);
@@ -430,9 +427,9 @@ private:
       
 	void DrawTriangleWireframe(const Triangle& triangle, uint32_t color)
 	{
-		DrawLine(triangle.GetVertex(0).mPoint, triangle.GetVertex(1).mPoint, color);
-		DrawLine(triangle.GetVertex(1).mPoint, triangle.GetVertex(2).mPoint, color);
-		DrawLine(triangle.GetVertex(2).mPoint, triangle.GetVertex(0).mPoint, color);
+		DrawLine(triangle.mVertices[0].mPoint, triangle.mVertices[1].mPoint, color);
+		DrawLine(triangle.mVertices[1].mPoint, triangle.mVertices[2].mPoint, color);
+		DrawLine(triangle.mVertices[2].mPoint, triangle.mVertices[0].mPoint, color);
 	}
 
     void DrawTexturedTriangle(const Triangle& triangle, const Texture& texture)
@@ -448,14 +445,14 @@ private:
 		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
 		{
 			(void)vertices;
-			mPixelRenderer->SetPixel(point.x, point.y, triangle.GetColor());
+			mPixelRenderer->SetPixel(point.x, point.y, triangle.mColor);
 		});
 	}
 
     void RasterTriangle(const Triangle& triangle, const RasterTriangleFunc& callback)
     {
         // Extract triangle vertices
-        std::array<Vertex, 3> vertices { triangle.GetVertex(0), triangle.GetVertex(1), triangle.GetVertex(2) };
+        std::array<Vertex, 3> vertices { triangle.mVertices[0], triangle.mVertices[1], triangle.mVertices[2] };
 
         // Sort vertices by y-coordinate (ascending)
         std::sort(std::begin(vertices), std::end(vertices), [](const Vertex& a, const Vertex& b) {
