@@ -193,7 +193,7 @@ class RendererApplication : public Application
 public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
-		, mDirectionalLight({ 0.0f, 0.0f, 1.0f })
+		, mDirectionalLight({ 0.0f, -1.0f, 1.0f })
 		, mZBuffer(GetContext())
 	{ }
 
@@ -219,9 +219,9 @@ public:
             aspectY,
             near,
             far
-        );        
+        );
 
-		mClippingPlanes = ComputePerspectiveFrustrumPlanes(fovY, fovX, near, far);
+		mClippingPlanes = ComputePerspectiveFrustrumPlanes(fovX, fovY, near, far);
     }
 
     virtual void OnEvent(const SDL_Event& event, float timeslice) override
@@ -258,101 +258,89 @@ public:
     }
 
     virtual void OnUpdate(float timelice) override
-    { 		
-		(void)timelice; // Unused
-        
+    {
+        (void)timelice; // Unused
+
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
-               
-		mZBuffer.Clear();
-		mTrianglesToRender.clear();
+
+        mZBuffer.Clear();
+        mTrianglesToRender.clear();
         std::array<glm::vec4, 3> transformedVertices;
 
-		mMesh->SetScale({ 1.0f, 1.0f, 1.0f });				
-		mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
+        mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
+        mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
 
         glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
 
-		// Init with z-axis pointing forward
-		glm::vec3 target { 0.0f, 0.0f, 1.0f };
+        // Init with z-axis pointing forward
+        glm::vec3 target{ 0.0f, 0.0f, 1.0f };
         mCamera.mDirection = CreateRotateAboutYMatrix(glm::degrees(mCamera.mYawAngle)) * glm::vec4(target, 0.0f);
 
-		// Offset the camera position in the direction where the camera is pointing at
+        // Offset the camera position in the direction where the camera is pointing at
         target = mCamera.mPosition + mCamera.mDirection;
-		glm::vec3 up { 0.0f, 1.0f, 0.0f };
+        glm::vec3 up{ 0.0f, 1.0f, 0.0f };
 
         glm::mat4 viewMatrix = CreateLookAt(mCamera.mPosition, target, up);
 
-		// Build up a list of projected triangles to render
+        // Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
-            // Only want to show front face of cube for testing purposes
-			if (i != 4) 
-            {
-				continue;
-			}
+            const Face& face = mMesh->GetFace(i);
 
-			const Face& face = mMesh->GetFace(i);
-
-			// Transform the vertices
+            // Transform the vertices
             for (size_t j = 0; j < 3; j++)
             {
                 glm::vec3 vertex = mMesh->GetVertex(face.mVertexIndicies[j]);
-                
+
                 transformedVertices[j] = modelMatrix * glm::vec4(vertex, 1.0f);
-				transformedVertices[j] = viewMatrix * transformedVertices[j];
+                transformedVertices[j] = viewMatrix * transformedVertices[j];
 
-				assert(transformedVertices[j].w == 1.0f);
+                assert(transformedVertices[j].w == 1.0f);
             }
 
-			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
-			
-			glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
-            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))
+            glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
+
+            glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
+            if (!IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))
             {
-				// Clipping (enter with 1 triangle, exit with 0 or more triangles)
-                FrustumClippedPolygon polygon(mClippingPlanes, transformedVertices);
-                for (std::array<glm::vec4, 3>& vertices : polygon.ClipWithFrustum())
+                continue;
+            }
+            
+            // Clipping (enter with 1 triangle, exit with 0 or more triangles)            
+            for (std::array<glm::vec4, 3>&vertices : ClipWithFrustum(mClippingPlanes, transformedVertices))
+            {
+                Triangle projectedTriangle;
+
+                for (size_t j = 0; j < 3; j++)
                 {
-					ProjectTriangle(vertices);
-                }               
+                    Vertex vertex;
+
+                    vertex.mPoint = ProjectVec4(mProjectionMatrix, vertices[j]);
+
+                    // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
+                    vertex.mPoint.y *= -1.0f;
+
+                    // Scale into the view
+                    vertex.mPoint.x *= windowSize.x * 0.5f;
+                    vertex.mPoint.y *= windowSize.y * 0.5f;
+
+                    // Translate the projected points to the middle of the screen
+                    vertex.mPoint.x += windowSize.x * 0.5f;
+                    vertex.mPoint.y += windowSize.y * 0.5f;
+
+                    projectedTriangle.SetVertex(j, vertex);
+                    projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
+                }
+
+                // Calculate the average depth of the triangle
+                float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
+
+                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
+                projectedTriangle.SetColor(shadedColor);
+
+                mTrianglesToRender.push_back(projectedTriangle);
             }
         }
-    }
-
-    void ProjectTriangle(const std::array<glm::vec4, 3>& transformedVertices)
-    {        
-        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
-        
-        Triangle projectedTriangle;
-        
-        for (size_t j = 0; j < 3; j++)
-        {
-            Vertex vertex;
-
-            vertex.mPoint = ProjectVec4(mProjectionMatrix, transformedVertices[j]);
-
-            // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
-            vertex.mPoint.y *= -1.0f;
-
-            // Scale into the view
-            vertex.mPoint.x *= windowSize.x * 0.5f;
-            vertex.mPoint.y *= windowSize.y * 0.5f;
-
-            // Translate the projected points to the middle of the screen
-            vertex.mPoint.x += windowSize.x * 0.5f;
-            vertex.mPoint.y += windowSize.y * 0.5f;
-
-            projectedTriangle.SetVertex(j, vertex);
-            //projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
-        }
-
-        //// Calculate the average depth of the triangle
-        //float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
-
-        //uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
-        //projectedTriangle.SetColor(shadedColor);
-
-        mTrianglesToRender.push_back(projectedTriangle);
     }
 
     virtual void OnRender() override
@@ -361,17 +349,32 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            //DrawTexturedTriangle(triangle, *mTexture);			
-			DrawTriangleWireframe(triangle, 0xFFFFFFFF);
-            
-			// Draw a small red dot for each vertex
-            glm::ivec4 point0 = triangle.GetVertex(0).mPoint;
-            glm::ivec4 point1 = triangle.GetVertex(1).mPoint;
-            glm::ivec4 point2 = triangle.GetVertex(2).mPoint;
-                        
-            DrawRectangle(point0.x - 1, point0.y - 1, 3, 3, 0xFF0000FF);
-            DrawRectangle(point1.x - 1, point1.y - 1, 3, 3, 0xFF0000FF);
-            DrawRectangle(point2.x - 1, point2.y - 1, 3, 3, 0xFF0000FF);
+            bool drawTextured = false;
+			bool drawFlatShaded = false;
+
+            if (drawTextured)
+            {
+			    DrawTexturedTriangle(triangle, *mTexture);
+            }
+
+            if (drawFlatShaded)
+            {
+				DrawFilledTriangle(triangle);
+            }
+
+            if (!drawTextured && !drawFlatShaded)
+            {
+				DrawTriangleWireframe(triangle, 0xFFFFFFFF);
+                
+                // Draw a small red dot for each vertex
+                glm::ivec4 point0 = triangle.GetVertex(0).mPoint;
+                glm::ivec4 point1 = triangle.GetVertex(1).mPoint;
+                glm::ivec4 point2 = triangle.GetVertex(2).mPoint;
+
+                DrawRectangle(point0.x - 1, point0.y - 1, 3, 3, 0xFF0000FF);
+                DrawRectangle(point1.x - 1, point1.y - 1, 3, 3, 0xFF0000FF);
+                DrawRectangle(point2.x - 1, point2.y - 1, 3, 3, 0xFF0000FF);
+            }
         }
 
 		mPixelRenderer->Render();

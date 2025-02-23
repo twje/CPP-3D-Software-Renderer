@@ -5,6 +5,10 @@
 // System
 #include <algorithm>
 
+namespace {
+
+}  // namespace
+
 //------------------------------------------------------------------------------
 std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const Angle& fovY, float near, float far)
 {
@@ -60,74 +64,69 @@ std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const A
 }
 
 //------------------------------------------------------------------------------
-FrustumClippedPolygon::FrustumClippedPolygon(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices)	
-    : mPlanes(planes)
-    , mVertexCount(triangleVertices.size())
+std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices)
 {
-    std::transform(triangleVertices.begin(), triangleVertices.end(), mVertices.begin(),
-        [](const glm::vec4& v) -> glm::vec3 {
-            return glm::vec3(v.x, v.y, v.z);  // Explicit conversion; assuming w is not needed.
-    });
-}
+    /*
+        Sutherland-Hodgman polygon clipping algorithm
+    */
 
-//------------------------------------------------------------------------------
-std::vector<std::array<glm::vec4, 3>> FrustumClippedPolygon::ClipWithFrustum()
-{
-	// Clip against each plane (output is input for the next plane)
-	for (size_t i = 0; i < static_cast<size_t>(ClippingPlaneType::COUNT); ++i)
-	{
-		ClipPolygonAgainstPlane(static_cast<ClippingPlaneType>(i));
-	}
+    // Maximum number of vertices when clipping a triangle against a frustum
+	constexpr size_t kMaxVertices = 10;
 
-	// Return the clipped triangles
-	std::vector<std::array<glm::vec4, 3>> clippedTriangles;
-    if (mVertexCount > 0)
+    // Start with the triangle's vertices
+    std::array<glm::vec3, kMaxVertices> vertices {
+        triangleVertices[0],
+        triangleVertices[2],
+        triangleVertices[1]
+    };
+    size_t vertexCount = 3;
+
+    // Clip the polygon against each plane.
+    for (size_t i = 0; i < static_cast<size_t>(ClippingPlaneType::COUNT) && vertexCount > 0; ++i)
     {
-	    for (size_t i = 0; i < mVertexCount - 2; ++i)
-	    {
-            glm::vec4 vertex0 { mVertices[0], 1.0f };
-            glm::vec4 vertex1 { mVertices[i + 1], 1.0f };
-            glm::vec4 vertex2 { mVertices[i + 2], 1.0f };
+        const Plane& plane = planes[i];
+        std::array<glm::vec3, kMaxVertices> newVertices;
+        size_t newCount = 0;
 
-            std::array<glm::vec4, 3> triangleVertices = { vertex0, vertex1, vertex2 };
-            clippedTriangles.push_back(std::move(triangleVertices));
+        for (size_t j = 0; j < vertexCount; ++j)
+        {
+            const glm::vec3& current = vertices[j];
+            const glm::vec3& next = vertices[(j + 1) % vertexCount];
+
+            const float currentDist = glm::dot(plane.mNormal, current - plane.mPoint);
+            const float nextDist = glm::dot(plane.mNormal, next - plane.mPoint);
+
+            // If the current vertex is inside, add it.
+            if (currentDist >= 0.0f)
+            {
+                newVertices[newCount++] = current;
+            }
+
+            // If the edge crosses the plane, compute and add the intersection point.
+            if (currentDist * nextDist < 0.0f)
+            {
+                const float t = currentDist / (currentDist - nextDist);
+                newVertices[newCount++] = glm::mix(current, next, t);
+            }
+        }
+
+        std::copy(newVertices.begin(), newVertices.begin() + newCount, vertices.begin());
+        vertexCount = newCount;
+    }
+
+    // Triangulate the resulting polygon using a fan (if it has at least 3 vertices).
+    std::vector<std::array<glm::vec4, 3>> clippedTriangles;
+    if (vertexCount >= 3)
+    {
+        for (size_t i = 1; i < vertexCount - 1; ++i)
+        {
+            clippedTriangles.push_back({
+                glm::vec4(vertices[0], 1.0f),
+                glm::vec4(vertices[i], 1.0f),
+                glm::vec4(vertices[i + 1], 1.0f)
+            });
         }
     }
 
     return clippedTriangles;
-}
-
-//------------------------------------------------------------------------------
-void FrustumClippedPolygon::ClipPolygonAgainstPlane(ClippingPlaneType planeType)
-{
-	const Plane& plane = mPlanes[ClippingPlaneIndex(planeType)];
-	
-    std::array<glm::vec3, kMaxVertices> insideVertices;
-	size_t insideVertexCount = 0;
-
-	// Clip the polygon against the plane
-	for (size_t i = 0; i < mVertexCount; ++i)
-	{
-		const glm::vec3& currentVertex = mVertices[i];
-		const glm::vec3& nextVertex = mVertices[(i + 1) % mVertexCount];
-
-		const float currentDistance = glm::dot(plane.mNormal, currentVertex - plane.mPoint);
-		const float nextDistance = glm::dot(plane.mNormal, nextVertex - plane.mPoint);
-
-		if (currentDistance >= 0.0f)
-		{
-			insideVertices[insideVertexCount++] = currentVertex;
-		}
-
-		// If the current and next vertex are on opposite sides of the plane
-		if (currentDistance * nextDistance < 0.0f)
-		{
-			const float t = currentDistance / (currentDistance - nextDistance);
-			insideVertices[insideVertexCount++] = glm::mix(currentVertex, nextVertex, t);
-		}
-	}
-
-	// Update the polygon with the inside clipped vertices
-    std::copy(insideVertices.begin(), insideVertices.begin() + insideVertexCount, mVertices.begin());
-	mVertexCount = insideVertexCount;
 }

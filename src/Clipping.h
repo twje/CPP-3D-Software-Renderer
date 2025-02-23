@@ -40,21 +40,4 @@ constexpr size_t ClippingPlaneIndex(ClippingPlaneType type)
 
 //------------------------------------------------------------------------------
 std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const Angle& fovY, float near, float far);
-
-//------------------------------------------------------------------------------
-class FrustumClippedPolygon
-{
-    // Maximum number of vertices when clipping a triangle against a frustum
-    static constexpr size_t kMaxVertices = 10;
-
-public:
-	explicit FrustumClippedPolygon(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices);
-    std::vector<std::array<glm::vec4, 3>> ClipWithFrustum();
-
-private:
-	void ClipPolygonAgainstPlane(ClippingPlaneType planeType);
-    
-    const std::array<Plane, 6>& mPlanes;
-	std::array<glm::vec3, kMaxVertices> mVertices;
-    size_t mVertexCount;
-};
+std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices);
