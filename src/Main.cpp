@@ -207,19 +207,21 @@ public:
 
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
-		const Angle fov = Angle::Degrees(60.0f);
-		const float aspect = windowSize.y / windowSize.x;
+		const float aspectY = windowSize.y / windowSize.x;
+        const float aspectX = windowSize.x / windowSize.y;
+		const Angle fovY = Angle::Degrees(60.0f);
+		const Angle fovX = Angle::Radians(2.0f * glm::atan(glm::tan(fovY.AsRadians() * 0.5f) * aspectX));
         const float near = 0.2f;
 		const float far = 110.0f;
 
         mProjectionMatrix = CreatePerspectiveProjectionMatrix(
-            fov.AsDegrees(),
-            aspect,
+            fovY.AsDegrees(),
+            aspectY,
             near,
             far
-        );
+        );        
 
-		mClippingPlanes = ComputePerspectiveFrustrumPlanes(fov, near, far);
+		mClippingPlanes = ComputePerspectiveFrustrumPlanes(fovY, fovX, near, far);
     }
 
     virtual void OnEvent(const SDL_Event& event, float timeslice) override
@@ -303,49 +305,54 @@ public:
             }
 
 			glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
-
-			// Author converted 'transformedVertices' to vec3 (ignore this for now)
+			
 			glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
-            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))                        
+            if (IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))
             {
 				// Clipping (enter with 1 triangle, exit with 0 or more triangles)
                 FrustumClippedPolygon polygon(mClippingPlanes, transformedVertices);
-				polygon.ClipWithFrustum();
-
-                // TODO: after clipping, we need to break the polygon into triangles
-                Triangle projectedTriangle;
-
-                // Project the transformed vertices
-                for (size_t j = 0; j < 3; j++)
+                for (std::array<glm::vec4, 3>& vertices : polygon.ClipWithFrustum())
                 {
-					Vertex vertex;
-
-                    vertex.mPoint = ProjectVec4(mProjectionMatrix, transformedVertices[j]);
-                    
-                    // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
-					vertex.mPoint.y *= -1.0f;
-
-                    // Scale into the view
-                    vertex.mPoint.x *= windowSize.x * 0.5f;
-                    vertex.mPoint.y *= windowSize.y * 0.5f;
-
-                    // Translate the projected points to the middle of the screen
-                    vertex.mPoint.x += windowSize.x * 0.5f;
-                    vertex.mPoint.y += windowSize.y * 0.5f;
-
-                    projectedTriangle.SetVertex(j, vertex);
-                    projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
-                }
-                
-			    // Calculate the average depth of the triangle
-                float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
-
-                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
-                projectedTriangle.SetColor(shadedColor);
-
-                mTrianglesToRender.push_back(projectedTriangle);
+					ProjectTriangle(vertices);
+                }               
             }
         }
+    }
+
+    void ProjectTriangle(const std::array<glm::vec4, 3>& transformedVertices)
+    {        
+        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
+        
+        Triangle projectedTriangle;
+        
+        for (size_t j = 0; j < 3; j++)
+        {
+            Vertex vertex;
+
+            vertex.mPoint = ProjectVec4(mProjectionMatrix, transformedVertices[j]);
+
+            // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
+            vertex.mPoint.y *= -1.0f;
+
+            // Scale into the view
+            vertex.mPoint.x *= windowSize.x * 0.5f;
+            vertex.mPoint.y *= windowSize.y * 0.5f;
+
+            // Translate the projected points to the middle of the screen
+            vertex.mPoint.x += windowSize.x * 0.5f;
+            vertex.mPoint.y += windowSize.y * 0.5f;
+
+            projectedTriangle.SetVertex(j, vertex);
+            //projectedTriangle.SetUV(j, mMesh->GetUV(face.mTextureIndicies[j]));
+        }
+
+        //// Calculate the average depth of the triangle
+        //float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
+
+        //uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.GetColor(), lightIntensity);
+        //projectedTriangle.SetColor(shadedColor);
+
+        mTrianglesToRender.push_back(projectedTriangle);
     }
 
     virtual void OnRender() override
@@ -354,7 +361,17 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            DrawTexturedTriangle(triangle, *mTexture);			
+            //DrawTexturedTriangle(triangle, *mTexture);			
+			DrawTriangleWireframe(triangle, 0xFFFFFFFF);
+            
+			// Draw a small red dot for each vertex
+            glm::ivec4 point0 = triangle.GetVertex(0).mPoint;
+            glm::ivec4 point1 = triangle.GetVertex(1).mPoint;
+            glm::ivec4 point2 = triangle.GetVertex(2).mPoint;
+                        
+            DrawRectangle(point0.x - 1, point0.y - 1, 3, 3, 0xFF0000FF);
+            DrawRectangle(point1.x - 1, point1.y - 1, 3, 3, 0xFF0000FF);
+            DrawRectangle(point2.x - 1, point2.y - 1, 3, 3, 0xFF0000FF);
         }
 
 		mPixelRenderer->Render();
@@ -636,13 +653,7 @@ private:
 			point.x * s + point.y * c,
 			point.z
 		};
-    }
-
-    glm::vec2 Project(const glm::vec3& point)
-	{
-		const float fov = 640.0f;		
-        return { (point.x * fov) / point.z, (point.y * fov) / point.z };
-	}
+    }    
 
 	void DrawRectangle(int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
 	{

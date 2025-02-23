@@ -88,15 +88,15 @@ glm::mat4 CreateTranslationMatrix(const glm::vec3& translation)
 }
 
 //------------------------------------------------------------------------------
-glm::mat4 CreatePerspectiveProjectionMatrix(float fov, float aspect, float znear, float zfar)
+glm::mat4 CreatePerspectiveProjectionMatrix(float fovY, float aspectY, float znear, float zfar)
 {
-    const float radians = glm::radians(fov * 0.5f);
+    const float radians = glm::radians(fovY * 0.5f);
 	const float fovScaleFactor = 1.0f / glm::tan(radians);
     const float zScaleFactor = zfar / (zfar - znear);
 
     return glm::transpose(glm::mat4(
-        aspect * fovScaleFactor, 0.0f, 0.0f,         0.0f,
-        0.0f,    fovScaleFactor, 0.0f,               0.0f,
+        aspectY * fovScaleFactor, 0.0f, 0.0f,         0.0f,
+        0.0f,     fovScaleFactor, 0.0f,               0.0f,
         0.0f,                    0.0f, zScaleFactor, -znear * zScaleFactor,
         0.0f,    0.0f,           1.0f,               0.0f
     ));

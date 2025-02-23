@@ -6,7 +6,7 @@
 #include <algorithm>
 
 //------------------------------------------------------------------------------
-std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fov, float near, float far)
+std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const Angle& fovY, float near, float far)
 {
     /*            
               /|\
@@ -20,27 +20,32 @@ std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fov, float ne
               \|/
     */
     
-    const float halfFovRad = fov.AsRadians() * 0.5f;
-    const float cosHalfFov = std::cos(halfFovRad);
-    const float sinHalfFov = std::sin(halfFovRad);
+    const float halfFovRadX = fovX.AsRadians() * 0.5f;
+    const float cosHalfFovX = std::cos(halfFovRadX);
+    const float sinHalfFovX = std::sin(halfFovRadX);
+    
+    const float halfFovRadY = fovY.AsRadians() * 0.5f;
+    const float cosHalfFovY = std::cos(halfFovRadY);
+    const float sinHalfFovY = std::sin(halfFovRadY);
+
 	const glm::vec3 origin{ 0.0f, 0.0f, 0.0f };
 
     std::array<Plane, 6> planes { };
     
     planes[ClippingPlaneIndex(ClippingPlaneType::LEFT)] = {
-        origin, {cosHalfFov, 0.0f, sinHalfFov}
+        origin, {cosHalfFovX, 0.0f, sinHalfFovX}
     };
     
     planes[ClippingPlaneIndex(ClippingPlaneType::RIGHT)] = {
-        origin, {-cosHalfFov, 0.0f, sinHalfFov}
+        origin, {-cosHalfFovX, 0.0f, sinHalfFovX}
     };
     
     planes[ClippingPlaneIndex(ClippingPlaneType::TOP)] = {
-        origin, {0.0f, -cosHalfFov, sinHalfFov}
+        origin, {0.0f, -cosHalfFovY, sinHalfFovY}
     };
     
     planes[ClippingPlaneIndex(ClippingPlaneType::BOTTOM)] = {
-        origin, {0.0f, cosHalfFov, sinHalfFov}
+        origin, {0.0f, cosHalfFovY, sinHalfFovY}
     };
 
     planes[ClippingPlaneIndex(ClippingPlaneType::NEAR)] = {
@@ -55,8 +60,8 @@ std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fov, float ne
 }
 
 //------------------------------------------------------------------------------
-FrustumClippedPolygon::FrustumClippedPolygon(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices)
-	: mPlanes(planes)
+FrustumClippedPolygon::FrustumClippedPolygon(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices)	
+    : mPlanes(planes)
     , mVertexCount(triangleVertices.size())
 {
     std::transform(triangleVertices.begin(), triangleVertices.end(), mVertices.begin(),
@@ -66,13 +71,30 @@ FrustumClippedPolygon::FrustumClippedPolygon(const std::array<Plane, 6>& planes,
 }
 
 //------------------------------------------------------------------------------
-void FrustumClippedPolygon::ClipWithFrustum()
+std::vector<std::array<glm::vec4, 3>> FrustumClippedPolygon::ClipWithFrustum()
 {
 	// Clip against each plane (output is input for the next plane)
 	for (size_t i = 0; i < static_cast<size_t>(ClippingPlaneType::COUNT); ++i)
 	{
 		ClipPolygonAgainstPlane(static_cast<ClippingPlaneType>(i));
 	}
+
+	// Return the clipped triangles
+	std::vector<std::array<glm::vec4, 3>> clippedTriangles;
+    if (mVertexCount > 0)
+    {
+	    for (size_t i = 0; i < mVertexCount - 2; ++i)
+	    {
+            glm::vec4 vertex0 { mVertices[0], 1.0f };
+            glm::vec4 vertex1 { mVertices[i + 1], 1.0f };
+            glm::vec4 vertex2 { mVertices[i + 2], 1.0f };
+
+            std::array<glm::vec4, 3> triangleVertices = { vertex0, vertex1, vertex2 };
+            clippedTriangles.push_back(std::move(triangleVertices));
+        }
+    }
+
+    return clippedTriangles;
 }
 
 //------------------------------------------------------------------------------

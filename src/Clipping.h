@@ -39,7 +39,7 @@ constexpr size_t ClippingPlaneIndex(ClippingPlaneType type)
 }
 
 //------------------------------------------------------------------------------
-std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fov, float near, float far);
+std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const Angle& fovY, float near, float far);
 
 //------------------------------------------------------------------------------
 class FrustumClippedPolygon
@@ -49,11 +49,11 @@ class FrustumClippedPolygon
 
 public:
 	explicit FrustumClippedPolygon(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices);
-    void ClipWithFrustum();
+    std::vector<std::array<glm::vec4, 3>> ClipWithFrustum();
 
 private:
 	void ClipPolygonAgainstPlane(ClippingPlaneType planeType);
-
+    
     const std::array<Plane, 6>& mPlanes;
 	std::array<glm::vec3, kMaxVertices> mVertices;
     size_t mVertexCount;
