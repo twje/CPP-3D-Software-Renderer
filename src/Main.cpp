@@ -264,8 +264,7 @@ public:
         const glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
         mZBuffer.Clear();
-        mTrianglesToRender.clear();
-        std::array<glm::vec4, 3> transformedVertices;
+        mTrianglesToRender.clear();        
 
         mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
         mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
@@ -285,37 +284,33 @@ public:
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {            
             const Face& face = mMesh->GetFace(i);
-
-            // Transform the vertices
+                        
+            Triangle triangle;
+            
             for (size_t j = 0; j < 3; j++)
             {
-                glm::vec3 vertex = mMesh->GetVertex(face.mVertexIndicies[j]);
-
-                transformedVertices[j] = modelMatrix * glm::vec4(vertex, 1.0f);
-                transformedVertices[j] = viewMatrix * transformedVertices[j];
-
-                assert(transformedVertices[j].w == 1.0f);
+                Vertex& vertexData = triangle.mVertices[j];
+                vertexData.mPoint = glm::vec4(mMesh->GetVertex(face.mVertexIndicies[j]), 1.0f);
+				vertexData.mPoint = viewMatrix * modelMatrix * vertexData.mPoint;                
             }
 
-            glm::vec3 faceNormal = ComputeFaceNormal(transformedVertices);
+            glm::vec3 faceNormal = ComputeFaceNormal(triangle);
 
             glm::ivec3 origin = { 0, 0, 0 };  // LookAt matrix tranforms the origin to the camera position
-            if (!IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, transformedVertices))
+            if (!IsTriangleFrontFaceVisibleToCamera(origin, faceNormal, triangle))
             {
                 continue;
             }
             
             // Clipping (enter with 1 triangle, exit with 0 or more triangles)        
-            for (std::array<glm::vec4, 3>& vertices : ClipWithFrustum(mClippingPlanes, transformedVertices))
-            {
-                Triangle projectedTriangle;
-
+            for (Triangle& clippedTriangle : ClipWithFrustum(mClippingPlanes, triangle))
+            {                
                 for (size_t j = 0; j < 3; j++)
                 {
-                    Vertex& vertex = projectedTriangle.mVertices[j];
+                    Vertex& vertex = clippedTriangle.mVertices[j];
 
                     vertex.mUV = mMesh->GetUV(face.mTextureIndicies[j]);
-                    vertex.mPoint = ProjectVec4(mProjectionMatrix, vertices[j]);
+                    vertex.mPoint = ProjectVec4(mProjectionMatrix, vertex.mPoint);
 
                     // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
                     vertex.mPoint.y *= -1.0f;
@@ -331,10 +326,10 @@ public:
 
 				// Apply directional lighting
                 float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
-                uint32_t shadedColor = ApplyLightIntensity(projectedTriangle.mColor, lightIntensity);
-				projectedTriangle.mColor = shadedColor;
+                uint32_t shadedColor = ApplyLightIntensity(clippedTriangle.mColor, lightIntensity);
+                clippedTriangle.mColor = shadedColor;
 
-                mTrianglesToRender.push_back(projectedTriangle);
+                mTrianglesToRender.push_back(clippedTriangle);
             }
         }
     }
@@ -345,7 +340,7 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            bool drawTextured = true;
+            bool drawTextured = false;
 			bool drawFlatShaded = false;
 
             if (drawTextured)
@@ -391,12 +386,12 @@ private:
 		return model;
     }
 
-    glm::vec3 ComputeFaceNormal(const std::array<glm::vec4, 3>& transformedVertices)
+    glm::vec3 ComputeFaceNormal(const Triangle& triangle)
     {
         // Check backface culling
-        glm::vec3 vectorA = transformedVertices[0];  /*   A   */
-        glm::vec3 vectorB = transformedVertices[1];  /*  / \  */
-        glm::vec3 vectorC = transformedVertices[2];  /* C---B */
+        glm::vec3 vectorA = triangle.mVertices[0].mPoint;  /*   A   */
+        glm::vec3 vectorB = triangle.mVertices[1].mPoint;  /*  / \  */
+        glm::vec3 vectorC = triangle.mVertices[2].mPoint;  /* C---B */
 
         // Get the vector subtraction of B-A and C-A
         glm::vec3 vectorAB = vectorB - vectorA;
@@ -411,10 +406,10 @@ private:
 		return faceNormal;
     }
 
-    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const glm::vec3& faceNormal, const std::array<glm::vec4, 3>& transformedVertices)
+    bool IsTriangleFrontFaceVisibleToCamera(const glm::vec3& cameraPosition, const glm::vec3& faceNormal, const Triangle& triangle)
     {
         // Find the vector between vertex A in the triangle and the camera origin
-        glm::vec3 cameraRay = cameraPosition - glm::vec3(transformedVertices[0]);
+        glm::vec3 cameraRay = cameraPosition - glm::vec3(triangle.mVertices[0].mPoint);
 		cameraRay = glm::normalize(cameraRay);        
 
 		float dotNormalCamera = glm::dot(faceNormal, cameraRay);

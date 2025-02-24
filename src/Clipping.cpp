@@ -64,7 +64,7 @@ std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const A
 }
 
 //------------------------------------------------------------------------------
-std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>& planes, const std::array<glm::vec4, 3>& triangleVertices)
+std::vector<Triangle> ClipWithFrustum(const std::array<Plane, 6>& planes, const Triangle& triangle)
 {
     /*
         Sutherland-Hodgman polygon clipping algorithm
@@ -75,9 +75,9 @@ std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>
 
     // Start with the triangle's vertices
     std::array<glm::vec3, kMaxVertices> vertices {
-        triangleVertices[0],
-        triangleVertices[1],
-        triangleVertices[2]
+		triangle.mVertices[0].mPoint,
+        triangle.mVertices[1].mPoint,
+        triangle.mVertices[2].mPoint,
     };
     size_t vertexCount = 3;
 
@@ -115,16 +115,18 @@ std::vector<std::array<glm::vec4, 3>> ClipWithFrustum(const std::array<Plane, 6>
     }
 
     // Triangulate the resulting polygon using a fan (if it has at least 3 vertices).
-    std::vector<std::array<glm::vec4, 3>> clippedTriangles;
+    std::vector<Triangle> clippedTriangles;
     if (vertexCount >= 3)
     {
+		Triangle clippedTriangle;
+
         for (size_t i = 0; i < vertexCount - 2; i++)
         {
-            clippedTriangles.push_back({
-                glm::vec4(vertices[0], 1.0f),
-                glm::vec4(vertices[i + 1], 1.0f),
-                glm::vec4(vertices[i + 2], 1.0f)
-            });
+            clippedTriangle.mVertices[0].mPoint = glm::vec4(vertices[0], 1.0f);
+            clippedTriangle.mVertices[1].mPoint = glm::vec4(vertices[i + 1], 1.0f);
+            clippedTriangle.mVertices[2].mPoint = glm::vec4(vertices[i + 2], 1.0f);
+
+			clippedTriangles.push_back(clippedTriangle);
         }
     }
 
