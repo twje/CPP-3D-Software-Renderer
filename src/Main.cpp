@@ -201,9 +201,9 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("crab.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("cube.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("crab.png"));
 
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
@@ -289,9 +289,10 @@ public:
             
             for (size_t j = 0; j < 3; j++)
             {
-                Vertex& vertexData = triangle.mVertices[j];
+                Vertex& vertexData = triangle.mVertices[j];                
                 vertexData.mPoint = glm::vec4(mMesh->GetVertex(face.mVertexIndicies[j]), 1.0f);
 				vertexData.mPoint = viewMatrix * modelMatrix * vertexData.mPoint;                
+				vertexData.mUV = mMesh->GetUV(face.mTextureIndicies[j]);
             }
 
             glm::vec3 faceNormal = ComputeFaceNormal(triangle);
@@ -307,9 +308,9 @@ public:
             {                
                 for (size_t j = 0; j < 3; j++)
                 {
-                    Vertex& vertex = clippedTriangle.mVertices[j];
-
-                    vertex.mUV = mMesh->GetUV(face.mTextureIndicies[j]);
+                    Vertex& vertex = clippedTriangle.mVertices[j];                    
+                    
+					// Apply perspective division
                     vertex.mPoint = ProjectVec4(mProjectionMatrix, vertex.mPoint);
 
                     // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
@@ -340,7 +341,7 @@ public:
         
         for (Triangle& triangle : mTrianglesToRender)
         {
-            bool drawTextured = false;
+            bool drawTextured = true;
 			bool drawFlatShaded = false;
 
             if (drawTextured)

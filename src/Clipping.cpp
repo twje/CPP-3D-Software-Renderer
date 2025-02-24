@@ -63,70 +63,77 @@ std::array<Plane, 6> ComputePerspectiveFrustrumPlanes(const Angle& fovX, const A
 	return planes;
 }
 
-//------------------------------------------------------------------------------
 std::vector<Triangle> ClipWithFrustum(const std::array<Plane, 6>& planes, const Triangle& triangle)
 {
-    /*
-        Sutherland-Hodgman polygon clipping algorithm
-    */
-
     // Maximum number of vertices when clipping a triangle against a frustum
-	constexpr size_t kMaxVertices = 10;
+    constexpr size_t kMaxVertices = 10;
 
-    // Start with the triangle's vertices
-    std::array<glm::vec3, kMaxVertices> vertices {
-		triangle.mVertices[0].mPoint,
-        triangle.mVertices[1].mPoint,
-        triangle.mVertices[2].mPoint,
-    };
+    // Start with the triangle's vertices.
+    std::array<Vertex, kMaxVertices> vertices{};
+    vertices[0] = triangle.mVertices[0];
+    vertices[1] = triangle.mVertices[1];
+    vertices[2] = triangle.mVertices[2];
     size_t vertexCount = 3;
 
     // Clip the polygon against each plane.
-    for (size_t i = 0; i < static_cast<size_t>(ClippingPlaneType::COUNT) && vertexCount > 0; ++i)
+    for (const auto& plane : planes)
     {
-        const Plane& plane = planes[i];
-        std::array<glm::vec3, kMaxVertices> newVertices;
+        if (vertexCount == 0)
+        {
+            break;
+        }
+
+        std::array<Vertex, kMaxVertices> newVertices { };
         size_t newCount = 0;
+
+        // Lambda to compute the signed distance from a vertex to the plane.
+        auto distance = [&plane](const Vertex& v) -> float {
+            return glm::dot(plane.mNormal, glm::vec3(v.mPoint) - plane.mPoint);
+        };
 
         for (size_t j = 0; j < vertexCount; ++j)
         {
-            const glm::vec3& current = vertices[j];
-            const glm::vec3& next = vertices[(j + 1) % vertexCount];
+            const Vertex& current = vertices[j];
+            const Vertex& next = vertices[(j + 1) % vertexCount];
 
-            const float currentDist = glm::dot(plane.mNormal, current - plane.mPoint);
-            const float nextDist = glm::dot(plane.mNormal, next - plane.mPoint);
+            const float currentDist = distance(current);
+            const float nextDist = distance(next);
 
-            // If the current vertex is inside, add it.
+            // If the current vertex is inside the plane, add it.
             if (currentDist >= 0.0f)
             {
                 newVertices[newCount++] = current;
             }
 
-            // If the edge crosses the plane, compute and add the intersection point.
+            // If the edge crosses the plane, compute and add the intersection.
             if (currentDist * nextDist < 0.0f)
             {
                 const float t = currentDist / (currentDist - nextDist);
-                newVertices[newCount++] = glm::mix(current, next, t);
+                
+                Vertex intersection;
+                intersection.mPoint = glm::mix(current.mPoint, next.mPoint, t);
+                intersection.mUV = glm::mix(current.mUV, next.mUV, t);
+                newVertices[newCount++] = intersection;
             }
         }
 
+        // Update vertices with the clipped result.
         std::copy(newVertices.begin(), newVertices.begin() + newCount, vertices.begin());
         vertexCount = newCount;
     }
 
-    // Triangulate the resulting polygon using a fan (if it has at least 3 vertices).
+    // Triangulate the resulting polygon using a triangle fan.
     std::vector<Triangle> clippedTriangles;
     if (vertexCount >= 3)
     {
-		Triangle clippedTriangle;
-
-        for (size_t i = 0; i < vertexCount - 2; i++)
+        clippedTriangles.reserve(vertexCount - 2);
+        for (size_t i = 0; i < vertexCount - 2; ++i)
         {
-            clippedTriangle.mVertices[0].mPoint = glm::vec4(vertices[0], 1.0f);
-            clippedTriangle.mVertices[1].mPoint = glm::vec4(vertices[i + 1], 1.0f);
-            clippedTriangle.mVertices[2].mPoint = glm::vec4(vertices[i + 2], 1.0f);
-
-			clippedTriangles.push_back(clippedTriangle);
+            Triangle clippedTriangle;
+            clippedTriangle.mVertices[0] = vertices[0];
+            clippedTriangle.mVertices[1] = vertices[i + 1];
+            clippedTriangle.mVertices[2] = vertices[i + 2];
+            clippedTriangles.push_back(clippedTriangle);
         }
     }
 
