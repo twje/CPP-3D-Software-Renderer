@@ -18,6 +18,7 @@
 
 // System
 #include <functional>
+#include <chrono>
 
 /*
     TODO:
@@ -201,9 +202,9 @@ public:
     {
 		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
 
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("crab.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("crab.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("drone.png"));
 
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
@@ -254,6 +255,11 @@ public:
                 mCamera.mFowardVelocity = mCamera.mDirection * 5.0f * timeslice;
                 mCamera.mPosition -= mCamera.mFowardVelocity;
             }
+            else if (event.key.keysym.sym == SDLK_f)
+            {
+				mApplyFillRule = !mApplyFillRule;
+				std::cout << "Fill rule: " << (mApplyFillRule ? "ON" : "OFF") << std::endl;
+            }
 		}
     }
 
@@ -266,6 +272,7 @@ public:
         mZBuffer.Clear();
         mTrianglesToRender.clear();        
 
+        mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
         mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
         mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
 
@@ -328,7 +335,7 @@ public:
 				// Apply directional lighting
                 float lightIntensity = mDirectionalLight.CalculateLightIntensity(faceNormal);
                 uint32_t shadedColor = ApplyLightIntensity(clippedTriangle.mColor, lightIntensity);
-                clippedTriangle.mColor = shadedColor;
+                clippedTriangle.mColor = shadedColor;											
 
                 mTrianglesToRender.push_back(clippedTriangle);
             }
@@ -339,14 +346,20 @@ public:
     {
         mPixelRenderer->Clear(0x00000000);
         
+        std::array<uint32_t, 3> colors{ 0xFF0000FF, 0x00FF00FF, 0x0000FFFF };
+        size_t colorCount = 0;
+		
+        auto start = std::chrono::high_resolution_clock::now();
         for (Triangle& triangle : mTrianglesToRender)
         {
+			triangle.mColor = colors[colorCount++ % colors.size()];
+
             bool drawTextured = true;
 			bool drawFlatShaded = false;
 
             if (drawTextured)
             {
-			    DrawTexturedTriangle(triangle, *mTexture);
+                DrawTexturedTriangleV2(triangle, *mTexture);
             }
 
             if (drawFlatShaded)
@@ -368,6 +381,10 @@ public:
                 DrawRectangle(point2.x - 1, point2.y - 1, 3, 3, 0xFF0000FF);
             }
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> duration = end - start;
+
+        std::cout << "Execution time: " << duration.count() << " ms\n";
 
 		mPixelRenderer->Render();
     }
@@ -432,6 +449,113 @@ private:
             DrawTexel(point, vertices, texture);
 		});
     }
+
+    void DrawTexturedTriangleV2(const Triangle& triangle, const Texture& texture)
+    {
+		// For convenience
+		glm::ivec2 v0 = triangle.mVertices[0].mPoint;
+		glm::ivec2 v1 = triangle.mVertices[1].mPoint;
+		glm::ivec2 v2 = triangle.mVertices[2].mPoint;
+
+        // Compute perspective-correct interpolation of UV coordinates
+        float invZ0 = 1.0f / triangle.mVertices[0].mPoint.w;
+        float invZ1 = 1.0f / triangle.mVertices[1].mPoint.w;
+        float invZ2 = 1.0f / triangle.mVertices[2].mPoint.w;
+
+        glm::vec2 uv0 = triangle.mVertices[0].mUV;
+        glm::vec2 uv1 = triangle.mVertices[1].mUV;
+        glm::vec2 uv2 = triangle.mVertices[2].mUV;
+
+        // Compute the area of the entire triangle/parallelogram
+        float area = static_cast<float>(EdgeCrossProduct(v0, v1, v2));
+
+        // Finds the bounding box with all candidate pixels
+		int32_t xMin = std::min({ v0.x, v1.x, v2.x });
+		int32_t yMin = std::min({ v0.y, v1.y, v2.y });
+		int32_t xMax = std::max({ v0.x, v1.x, v2.x });
+		int32_t yMax = std::max({ v0.y, v1.y, v2.y });
+
+        // Compute the constant delta_s that will be used for the horizontal and vertical steps
+        int deltaW0Col = (v1.y - v2.y);
+        int deltaW1Col = (v2.y - v0.y);
+        int deltaW2Col = (v0.y - v1.y);
+        int deltaW0Row = (v2.x - v1.x);
+        int deltaW1Row = (v0.x - v2.x);
+        int deltaW2Row = (v1.x - v0.x);
+
+        // Fill convention: Points on a flat top or left edge are inside the triangle. (test first)
+        // https://fgiesen.wordpress.com/2013/02/06/the-barycentric-conspirac/
+        //int32_t bias0 = IsFlatTopOrLeftEdge(v1, v2) ? 0 : -1;
+        //int32_t bias1 = IsFlatTopOrLeftEdge(v2, v0) ? 0 : -1;
+        //int32_t bias2 = IsFlatTopOrLeftEdge(v0, v1) ? 0 : -1;
+        
+        // Compute the edge functions for the fist (top-left) point
+		glm::ivec2 point = { xMin, yMin };
+        int32_t w0Row = EdgeCrossProduct(v1, v2, point);
+        int32_t w1Row = EdgeCrossProduct(v2, v0, point);
+        int32_t w2Row = EdgeCrossProduct(v0, v1, point);
+
+		for (int32_t y = yMin; y < yMax; y++)
+		{
+			int32_t w0 = w0Row;
+			int32_t w1 = w1Row;
+			int32_t w2 = w2Row;
+			for (int32_t x = xMin; x < xMax; x++)
+			{
+				bool isInside = w0 >= 0 && w1 >= 0 && w2 >= 0;
+				if (isInside)
+				{
+                    // Compute the barycentric coordinates
+                    float alpha = w0 / area;
+                    float beta = w1 / area;
+                    float gamma = w2 / area;
+
+					// Perform perspective-correct interpolation of UV coordinates
+                    float interpolatedU = alpha * (uv0.x * invZ0) + beta * (uv1.x * invZ1) + gamma * (uv2.x * invZ2);
+                    float interpolatedV = alpha * (uv0.y * invZ0) + beta * (uv1.y * invZ1) + gamma * (uv2.y * invZ2);
+ 
+                    float interpolatedReciprocalZ = alpha * invZ0 + beta * invZ1 + gamma * invZ2;
+
+                    interpolatedU /= interpolatedReciprocalZ;
+                    interpolatedV /= interpolatedReciprocalZ;
+
+                    const glm::ivec2 texSize = texture.GetSize();
+
+                    const int32_t texX = std::abs(static_cast<int32_t>(interpolatedU * (texSize.x))) % texSize.x;
+                    const int32_t texY = std::abs(static_cast<int32_t>(interpolatedV * (texSize.y))) % texSize.y;
+
+					// Z-buffering
+                    if ((1.0f - interpolatedReciprocalZ) < mZBuffer.GetDepth(x, y))
+                    {
+                        auto color = texture.GetPixel(texX, texY);
+                        mPixelRenderer->SetPixel(x, y, color);
+                        mZBuffer.SetDepth(x, y, 1.0f - interpolatedReciprocalZ);
+                    }
+				}
+
+                w0 += deltaW0Col;
+                w1 += deltaW1Col;
+                w2 += deltaW2Col;
+			}
+            w0Row += deltaW0Row;
+            w1Row += deltaW1Row;
+            w2Row += deltaW2Row;
+		}
+    }
+
+    int32_t EdgeCrossProduct(const glm::ivec2& a, const glm::ivec2& b, const glm::ivec2 point)
+    {
+		return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+    }
+
+	bool IsFlatTopOrLeftEdge(const glm::ivec2& start, const glm::ivec2& end)
+	{
+		glm::ivec2 edge = end - start;		
+        bool isFlatTopEdge = (edge.y == 0 && edge.x > 0);
+		bool isLeftEdge = (edge.y < 0);
+
+		return isFlatTopEdge || isLeftEdge;
+	}
 
 	void DrawFilledTriangle(const Triangle& triangle)
 	{
@@ -531,8 +655,8 @@ private:
                 
         // Perform perspective-correct interpolation of UV coordinates
         const float invW0 = 1.0f / vertices[0].mPoint.w;
-        const float invW1 = 1.0f / vertices[1].mPoint.w;;
-        const float invW2 = 1.0f / vertices[2].mPoint.w;;
+        const float invW1 = 1.0f / vertices[1].mPoint.w;
+        const float invW2 = 1.0f / vertices[2].mPoint.w;
 
         float interpolatedU = alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2);
         float interpolatedV = alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2);
@@ -713,6 +837,7 @@ private:
 	Camera mCamera;
     glm::mat4 mProjectionMatrix;
 	std::array<Plane, 6> mClippingPlanes;
+    bool mApplyFillRule = false;
 };
 
 //------------------------------------------------------------------------------
