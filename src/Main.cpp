@@ -113,7 +113,19 @@ class SimpleRendererApplication : public Application
 public:
     SimpleRendererApplication(const AppConfig& config)
         : Application(config)
-    { }    
+        , mColorBuffer(GetContext(), { 128, 128 })
+    { }
+
+    virtual void OnRender() override
+    {
+        mColorBuffer.Clear(0x00000000);
+		mColorBuffer.SetPixel(0, 0, 0xFFFFFFFF);
+        mColorBuffer.SetPixel(10, 10, 0xFFFFFFFF);
+        mColorBuffer.Render();
+    }
+
+private:
+    ColorBuffer mColorBuffer;
 };
 
 //------------------------------------------------------------------------------
@@ -472,7 +484,7 @@ std::unique_ptr<Application> CreateApplication()
 	config.mFullscreen = false;
 	config.mUseNativeResolution = false;
 	config.mMonitorIndex = 1;
-	config.mWindowSize = { 800, 600 };
+	config.mWindowSize = { 800, 800 };
 
 	return std::make_unique<RendererApplication>(config);
 }
