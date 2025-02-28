@@ -6,6 +6,8 @@
 #include "Light.h"
 #include "Texture.h"
 #include "Clipping.h"
+#include "ColorBuffer.h"
+#include "GeometryRenderer.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -48,55 +50,6 @@ enum class RenderMethod
     WireframeWithVertices,
 	WireframeTriangle,
     WireframeTriangleWire
-};
-
-//------------------------------------------------------------------------------
-class ColorBuffer
-{
-public:
-    ColorBuffer(AppContext& context, const glm::uvec2& size)
-        : mContext(context)
-        , mSize(size)
-        , mTexture(context.mRenderer, size)
-        , mFrameBuffer(size.x* size.y, 0)
-    { }
-
-    bool IsValid() const { return mTexture.IsValid(); }
-    
-    void Clear(uint32_t color)
-    {
-        if (color == 0)
-        {
-            std::memset(mFrameBuffer.data(), 0, mFrameBuffer.size() * sizeof(uint32_t));
-        }
-        else
-        {
-            std::fill(mFrameBuffer.begin(), mFrameBuffer.end(), color);
-        }
-    }
-    
-    inline void SetPixel(int32_t x, int32_t y, uint32_t color)
-    {
-        if (x >= 0 && x < static_cast<int32_t>(mSize.x) && y >= 0 && y < static_cast<int32_t>(mSize.y))
-        {
-            mFrameBuffer[y * mSize.x + x] = color;
-        }
-    }
-    
-    void Render()
-    {
-        if (mTexture.IsValid())
-        {
-            SDL_UpdateTexture(mTexture.GetTexture(), nullptr, mFrameBuffer.data(), mSize.x * sizeof(uint32_t));
-            SDL_RenderCopy(mContext.mRenderer.GetSDLRenderer(), mTexture.GetTexture(), nullptr, nullptr);
-        }
-    }
-
-private:
-    AppContext& mContext;
-    glm::uvec2 mSize;
-    SDLTexture mTexture;
-    std::vector<uint32_t> mFrameBuffer;
 };
 
 //------------------------------------------------------------------------------
@@ -497,101 +450,6 @@ private:
 		return isFlatTopEdge || isLeftEdge;
 	}
 
-    void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
-    {
-		// Use DDA algorithm to draw a line
-        const int32_t deltaX = point1.x - point0.x;
-        const int32_t deltaY = point1.y - point0.y;
-
-		// Take the greater of the two deltas
-        const int32_t sideLength = abs(deltaX) >= abs(deltaY) ? abs(deltaX) : abs(deltaY);
-
-        const float xInc = deltaX / static_cast<float>(sideLength);
-        const float yInc = deltaY / static_cast<float>(sideLength);
-
-		float currentX = static_cast<float>(point0.x);
-        float currentY = static_cast<float>(point0.y);
-
-        for (int32_t i = 0; i <= sideLength; i++)
-        {
-            int32_t pixelX = static_cast<int32_t>(round(currentX));
-            int32_t pixelY = static_cast<int32_t>(round(currentY));
-
-            mColorBuffer.SetPixel(pixelX, pixelY, color);
-
-			currentX += xInc;
-			currentY += yInc;
-        }
-    }
-
-    glm::vec3 RotateAboutX(const glm::vec3& point, float angle)
-	{
-		const float s = sin(angle);
-		const float c = cos(angle);
-
-		return {
-			point.x,
-			point.y * c - point.z * s,
-			point.y * s + point.z * c,
-		};
-	}
-
-	void DrawRectangle(int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
-	{
-        for (int32_t i = 0; i <= width; i += 1)
-        {
-            for (int32_t j = 0; j <= height; j += 1)
-            {
-                const int32_t currentX = x + i;
-                const int32_t currentY = y + j;
-                mColorBuffer.SetPixel(currentX, currentY, color);
-            }
-        }
-	}
-
-    void DrawGrid()
-    {
-        const int32_t interval = 10;
-		const glm::ivec2 windowSize = GetContext().GetWindowSize();
-
-        for (int32_t x = 0; x <= windowSize.x; x += 1)
-        {
-            for (int32_t y = 0; y <= windowSize.y; y += 1)
-            {
-				if (x % interval == 0 || y % interval == 0)
-				{
-                    mColorBuffer.SetPixel(x, y, 0xFFFFFFFF);
-				}
-            }
-        }
-    }
-
-    void DrawVerticalLine(int32_t x, int32_t yStart, int32_t yEnd, int32_t color)
-    {
-        if (yStart > yEnd)
-        {
-            std::swap(yStart, yEnd);
-        }
-
-        for (int32_t y = yStart; y <= yEnd; ++y)
-        {
-            mColorBuffer.SetPixel(x, y, color);
-        }
-    }
-
-    void DrawHorizontalLine(int32_t y, int32_t xStart, int32_t xEnd, int32_t color)
-    {
-        if (xStart > xEnd)
-        {
-            std::swap(xStart, xEnd);
-        }
-
-        for (int32_t x = xStart; x <= xEnd; ++x)
-        {
-            mColorBuffer.SetPixel(x, y, color);
-        }
-    }
-    
 	std::vector<Triangle> mTrianglesToRender;
 	std::unique_ptr<Mesh> mMesh;
     std::unique_ptr<Texture> mTexture;
