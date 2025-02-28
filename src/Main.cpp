@@ -137,35 +137,6 @@ private:
 };
 
 //------------------------------------------------------------------------------
-class PixelRenderer
-{
-public:
-    PixelRenderer(AppContext& context)
-        : mColorBuffer(context, context.GetWindowSize())
-    { }
-
-    bool IsValid() const { return mColorBuffer.IsValid(); }
-
-    void SetPixel(int32_t x, int32_t y, int32_t color)
-    {
-		mColorBuffer.SetPixel(x, y, color);
-    }
-
-    void Clear(uint32_t color)
-    {
-		mColorBuffer.Clear(color);
-    }
-
-    void Render()
-    {
-		mColorBuffer.Render();
-    }
-
-private:
-	ColorBuffer mColorBuffer;
-};
-
-//------------------------------------------------------------------------------
 class Camera
 {
 public:
@@ -189,7 +160,7 @@ class SimpleRendererApplication : public Application
 public:
     SimpleRendererApplication(const AppConfig& config)
         : Application(config)
-    { }
+    { }    
 };
 
 //------------------------------------------------------------------------------
@@ -200,12 +171,11 @@ public:
 		: Application(config)
 		, mDirectionalLight({ 0.0f, -1.0f, 1.0f })
 		, mZBuffer(GetContext())
+		, mColorBuffer(GetContext(), GetContext().GetWindowSize())
 	{ }
 
     virtual void OnCreate() override
     {
-		mPixelRenderer = std::make_unique<PixelRenderer>(GetContext());
-
         mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
 		mTexture = std::make_unique<Texture>(ResolveAssetPath("drone.png"));
@@ -348,49 +318,24 @@ public:
 
     virtual void OnRender() override
     {
-        mPixelRenderer->Clear(0x00000000);
-        
-        std::array<uint32_t, 3> colors{ 0xFF0000FF, 0x00FF00FF, 0x0000FFFF };
-        size_t colorCount = 0;
-		
+		mColorBuffer.Clear(0x00000000);
+                		
         auto start = std::chrono::high_resolution_clock::now();
         for (Triangle& triangle : mTrianglesToRender)
         {
-			triangle.mColor = colors[colorCount++ % colors.size()];
+            const auto& vertices = triangle.mVertices;
 
-            bool drawTextured = true;
-			bool drawFlatShaded = false;
-
-            if (drawTextured)
-            {
-                DrawTexturedTriangleV3(triangle, *mTexture);
-            }
-
-            if (drawFlatShaded)
-            {
-				DrawFilledTriangle(triangle);
-            }
-
-            if (!drawTextured && !drawFlatShaded)
-            {
-				DrawTriangleWireframe(triangle, 0xFFFFFFFF);
-                
-                // Draw a small red dot for each vertex
-                glm::ivec4 point0 = triangle.mVertices[0].mPoint;
-                glm::ivec4 point1 = triangle.mVertices[1].mPoint;
-                glm::ivec4 point2 = triangle.mVertices[2].mPoint;
-
-                DrawRectangle(point0.x - 1, point0.y - 1, 3, 3, 0xFF0000FF);
-                DrawRectangle(point1.x - 1, point1.y - 1, 3, 3, 0xFF0000FF);
-                DrawRectangle(point2.x - 1, point2.y - 1, 3, 3, 0xFF0000FF);
-            }
+            DrawTexturedTriangle(
+                { vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+                { vertices[0].mUV, vertices[1].mUV, vertices[2].mUV },
+                *mTexture);
         }
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> duration = end - start;
 
+        auto end = std::chrono::high_resolution_clock::now();        
+        std::chrono::duration<double, std::milli> duration = end - start;
         std::cout << "Execution time: " << duration.count() << " ms\n";
 
-		mPixelRenderer->Render();
+		mColorBuffer.Render();
     }
 
 private:
@@ -437,132 +382,25 @@ private:
 		float dotNormalCamera = glm::dot(faceNormal, cameraRay);
 
 		return dotNormalCamera > 0.0f;
-    }
-      
-	void DrawTriangleWireframe(const Triangle& triangle, uint32_t color)
-	{
-		DrawLine(triangle.mVertices[0].mPoint, triangle.mVertices[1].mPoint, color);
-		DrawLine(triangle.mVertices[1].mPoint, triangle.mVertices[2].mPoint, color);
-		DrawLine(triangle.mVertices[2].mPoint, triangle.mVertices[0].mPoint, color);
-	}
+    }     
 
-    void DrawTexturedTriangle(const Triangle& triangle, const Texture& texture)
-    {		
-		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
-		{
-            DrawTexel(point, vertices, texture);
-		});
-    }
-
-    void DrawTexturedTriangleV2(const Triangle& triangle, const Texture& texture)
-    {
-		// For convenience
-		glm::ivec2 v0 = triangle.mVertices[0].mPoint;
-		glm::ivec2 v1 = triangle.mVertices[1].mPoint;
-		glm::ivec2 v2 = triangle.mVertices[2].mPoint;
-
-        // Compute perspective-correct interpolation of UV coordinates
-        float invZ0 = 1.0f / triangle.mVertices[0].mPoint.w;
-        float invZ1 = 1.0f / triangle.mVertices[1].mPoint.w;
-        float invZ2 = 1.0f / triangle.mVertices[2].mPoint.w;
-
-        glm::vec2 uv0 = triangle.mVertices[0].mUV;
-        glm::vec2 uv1 = triangle.mVertices[1].mUV;
-        glm::vec2 uv2 = triangle.mVertices[2].mUV;
-
-        // Compute the area of the entire triangle/parallelogram
-        float area = static_cast<float>(EdgeCrossProduct(v0, v1, v2));
-
-        // Finds the bounding box with all candidate pixels
-		int32_t xMin = std::min({ v0.x, v1.x, v2.x });
-		int32_t yMin = std::min({ v0.y, v1.y, v2.y });
-		int32_t xMax = std::max({ v0.x, v1.x, v2.x });
-		int32_t yMax = std::max({ v0.y, v1.y, v2.y });
-
-        // Compute the constant delta_s that will be used for the horizontal and vertical steps
-        int deltaW0Col = (v1.y - v2.y);
-        int deltaW1Col = (v2.y - v0.y);
-        int deltaW2Col = (v0.y - v1.y);
-        int deltaW0Row = (v2.x - v1.x);
-        int deltaW1Row = (v0.x - v2.x);
-        int deltaW2Row = (v1.x - v0.x);
-
-        // Fill convention: Points on a flat top or left edge are inside the triangle. (test first)
-        // https://fgiesen.wordpress.com/2013/02/06/the-barycentric-conspirac/
-        //int32_t bias0 = IsFlatTopOrLeftEdge(v1, v2) ? 0 : -1;
-        //int32_t bias1 = IsFlatTopOrLeftEdge(v2, v0) ? 0 : -1;
-        //int32_t bias2 = IsFlatTopOrLeftEdge(v0, v1) ? 0 : -1;
-        
-        // Compute the edge functions for the fist (top-left) point
-		glm::ivec2 point = { xMin, yMin };
-        int32_t w0Row = EdgeCrossProduct(v1, v2, point);
-        int32_t w1Row = EdgeCrossProduct(v2, v0, point);
-        int32_t w2Row = EdgeCrossProduct(v0, v1, point);
-
-		for (int32_t y = yMin; y < yMax; y++)
-		{
-			int32_t w0 = w0Row;
-			int32_t w1 = w1Row;
-			int32_t w2 = w2Row;
-			for (int32_t x = xMin; x < xMax; x++)
-			{
-				bool isInside = w0 >= 0 && w1 >= 0 && w2 >= 0;
-				if (isInside)
-				{
-                    // Compute the barycentric coordinates
-                    float alpha = w0 / area;
-                    float beta = w1 / area;
-                    float gamma = w2 / area;
-
-					// Perform perspective-correct interpolation of UV coordinates
-                    float interpolatedU = alpha * (uv0.x * invZ0) + beta * (uv1.x * invZ1) + gamma * (uv2.x * invZ2);
-                    float interpolatedV = alpha * (uv0.y * invZ0) + beta * (uv1.y * invZ1) + gamma * (uv2.y * invZ2);
- 
-                    float interpolatedReciprocalZ = alpha * invZ0 + beta * invZ1 + gamma * invZ2;
-
-                    interpolatedU /= interpolatedReciprocalZ;
-                    interpolatedV /= interpolatedReciprocalZ;
-
-                    const glm::ivec2 texSize = texture.GetSize();
-
-                    const int32_t texX = std::abs(static_cast<int32_t>(interpolatedU * (texSize.x))) % texSize.x;
-                    const int32_t texY = std::abs(static_cast<int32_t>(interpolatedV * (texSize.y))) % texSize.y;
-
-					// Z-buffering
-                    if ((1.0f - interpolatedReciprocalZ) < mZBuffer.GetDepth(x, y))
-                    {
-                        auto color = texture.GetPixel(texX, texY);
-                        mPixelRenderer->SetPixel(x, y, color);
-                        mZBuffer.SetDepth(x, y, 1.0f - interpolatedReciprocalZ);
-                    }
-				}
-
-                w0 += deltaW0Col;
-                w1 += deltaW1Col;
-                w2 += deltaW2Col;
-			}
-            w0Row += deltaW0Row;
-            w1Row += deltaW1Row;
-            w2Row += deltaW2Row;
-		}
-    }
-
-    void DrawTexturedTriangleV3(const Triangle& triangle, const Texture& texture)
+    void DrawTexturedTriangle(const std::array<glm::vec4, 3>& vertices, const std::array<glm::vec2, 3>& uvs,
+                              const Texture& texture)
     {
         // Vertex positions (integer screen coordinates)
-        glm::ivec2 p0 = triangle.mVertices[0].mPoint;
-        glm::ivec2 p1 = triangle.mVertices[1].mPoint;
-        glm::ivec2 p2 = triangle.mVertices[2].mPoint;
+        glm::ivec2 p0 = vertices[0];
+        glm::ivec2 p1 = vertices[1];
+        glm::ivec2 p2 = vertices[2];
 
         // Precompute inverse depth for perspective-correct interpolation
-        float invW0 = 1.0f / triangle.mVertices[0].mPoint.w;
-        float invW1 = 1.0f / triangle.mVertices[1].mPoint.w;
-        float invW2 = 1.0f / triangle.mVertices[2].mPoint.w;
+        float invW0 = 1.0f / vertices[0].w;
+        float invW1 = 1.0f / vertices[1].w;
+        float invW2 = 1.0f / vertices[2].w;
 
         // Texture coordinates for each vertex
-        glm::vec2 uv0 = triangle.mVertices[0].mUV;
-        glm::vec2 uv1 = triangle.mVertices[1].mUV;
-        glm::vec2 uv2 = triangle.mVertices[2].mUV;
+        glm::vec2 uv0 = uvs[0];
+        glm::vec2 uv1 = uvs[1];
+        glm::vec2 uv2 = uvs[2];
 
         // Compute inverse area for barycentric interpolation
         float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
@@ -627,7 +465,7 @@ private:
 
                         // Fetch texel color and render pixel
 						uint32_t color = texture.GetPixel(texX, texY);
-                        mPixelRenderer->SetPixel(x, y, color);
+                        mColorBuffer.SetPixel(x, y, color);
                         mZBuffer.SetDepth(x, y, depth);
                     }
                 }
@@ -643,7 +481,7 @@ private:
             edge1 += deltaEdge1Y;
             edge2 += deltaEdge2Y;
         }
-    }     
+    }
 
     int32_t EdgeCrossProduct(const glm::ivec2& a, const glm::ivec2& b, const glm::ivec2 point)
     {
@@ -658,158 +496,6 @@ private:
 
 		return isFlatTopEdge || isLeftEdge;
 	}
-
-	void DrawFilledTriangle(const Triangle& triangle)
-	{
-		RasterTriangle(triangle, [&](const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
-		{
-			(void)vertices;
-			mPixelRenderer->SetPixel(point.x, point.y, triangle.mColor);
-		});
-	}
-
-    void RasterTriangle(const Triangle& triangle, const RasterTriangleFunc& callback)
-    {
-        // Extract triangle vertices
-        std::array<Vertex, 3> vertices { triangle.mVertices[0], triangle.mVertices[1], triangle.mVertices[2] };
-
-        // Sort vertices by y-coordinate (ascending)
-        std::sort(std::begin(vertices), std::end(vertices), [](const Vertex& a, const Vertex& b) {
-            return a.mPoint.y < b.mPoint.y;
-        });
-
-        // Use integer points to prevent gaps in scanlines
-        const glm::ivec2& point0 = vertices[0].mPoint;
-        const glm::ivec2& point1 = vertices[1].mPoint;
-        const glm::ivec2& point2 = vertices[2].mPoint;
-
-        // Lambda to fill scanlines
-        auto fillScanlines = [&](const glm::ivec2& startPoint, const glm::ivec2& endPoint, float shortSlope, float longSlope) {
-            if (endPoint.y - startPoint.y != 0)
-            {
-                for (int32_t y = startPoint.y; y <= endPoint.y; y++)  // Short edge
-                {
-                    // Iterate over the short edge
-                    int32_t xStart = static_cast<int32_t>(startPoint.x + (y - startPoint.y) * shortSlope);
-
-                    // Iterate over the long edge (point0 is the top most vertex)
-                    int32_t xEnd = static_cast<int32_t>(point0.x + (y - point0.y) * longSlope);
-
-                    if (xStart > xEnd)
-                    {
-                        std::swap(xStart, xEnd);
-                    }
-
-                    for (int32_t x = xStart; x < xEnd; x++)
-                    {
-                        callback({ x, y }, vertices);
-                    }
-                }
-            }
-        };
-
-        /*
-                 (x0,y0)
-                   / \
-                  /   \
-                 /     \
-                /       \
-               /         \
-           (x1,y1)------(x2,y2)
-        */
-        const float longSlope = (point2.y - point0.y == 0)
-            ? 0.0f
-            : static_cast<float>(point2.x - point0.x) / (point2.y - point0.y);
-        
-        float shortSlope = (point1.y - point0.y == 0)
-            ? 0.0f
-            : static_cast<float>(point1.x - point0.x) / (point1.y - point0.y);
-
-        fillScanlines(point0, point1, shortSlope, longSlope);
-
-        /*
-           (x0,y0)------(x1,y1)
-               \         /
-                \       /
-                 \     /
-                  \   /
-                   \ /
-                 (x2,y2)
-        */
-        shortSlope = (point2.y - point1.y == 0)
-           ? 0.0f
-           : static_cast<float>(point2.x - point1.x) / (point2.y - point1.y);
-
-        fillScanlines(point1, point2, shortSlope, longSlope);
-    }    
-
-    void DrawTexel(const glm::ivec2& point, const std::array<Vertex, 3>& vertices, const Texture& texture)
-    {
-        const glm::vec3& weights = BaryCentricWeights(point, vertices);
-        
-        const float alpha = weights.x;
-        const float beta = weights.y;
-        const float gamma = weights.z;
-
-        const glm::vec2& uv0 = vertices[0].mUV;
-        const glm::vec2& uv1 = vertices[1].mUV; 
-        const glm::vec2& uv2 = vertices[2].mUV;
-                
-        // Perform perspective-correct interpolation of UV coordinates
-        const float invW0 = 1.0f / vertices[0].mPoint.w;
-        const float invW1 = 1.0f / vertices[1].mPoint.w;
-        const float invW2 = 1.0f / vertices[2].mPoint.w;
-
-        float interpolatedU = alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2);
-        float interpolatedV = alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2);
-        
-        float interpolatedReciprocalW = alpha * invW0 + beta * invW1 + gamma * invW2;
-
-        interpolatedU /= interpolatedReciprocalW;
-        interpolatedV /= interpolatedReciprocalW;
-
-        const glm::ivec2 texSize = texture.GetSize();
-
-        const int32_t texX = std::abs(static_cast<int32_t>(interpolatedU * (texSize.x - 1))) % texSize.x;
-        const int32_t texY = std::abs(static_cast<int32_t>(interpolatedV * (texSize.y - 1))) % texSize.y;
-
-        if ((1.0f - interpolatedReciprocalW) < mZBuffer.GetDepth(point.x, point.y))
-        {
-            mPixelRenderer->SetPixel(point.x, point.y, texture.GetPixel(texX, texY));
-			mZBuffer.SetDepth(point.x, point.y, 1.0f - interpolatedReciprocalW);
-        }
-    }
-
-    glm::vec3 BaryCentricWeights(const glm::ivec2& point, const std::array<Vertex, 3>& vertices)
-    {
-		glm::vec2 a = vertices[0].mPoint;
-		glm::vec2 b = vertices[1].mPoint;
-		glm::vec2 c = vertices[2].mPoint;
-		glm::vec2 p = point;
-
-        // Find the vectors between the vertices ABC and point p
-        glm::vec2 ac = c - a;
-        glm::vec2 ab = b - a;
-        glm::vec2 ap = p - a;
-        glm::vec2 pc = c - p;
-        glm::vec2 pb = b - p;
-
-        // Compute the area of the full parallegram/triangle ABC using 2D cross product
-        float area_parallelogram_abc = (ac.x * ab.y - ac.y * ab.x); // || AC x AB ||
-
-        // Alpha is the area of the small parallelogram/triangle PBC divided by the area of the full parallelogram/triangle ABC
-        float alpha = (pc.x * pb.y - pc.y * pb.x) / area_parallelogram_abc;
-
-        // Beta is the area of the small parallelogram/triangle APC divided by the area of the full parallelogram/triangle ABC
-        float beta = (ac.x * ap.y - ac.y * ap.x) / area_parallelogram_abc;
-
-        // Weight gamma is easily found since barycentric coordinates always add up to 1.0
-        float gamma = 1 - alpha - beta;
-
-        glm::vec3 weights = { alpha, beta, gamma };
-        
-        return weights;
-    }
 
     void DrawLine(const glm::ivec2& point0, const glm::ivec2& point1, uint32_t color)
     {
@@ -831,7 +517,7 @@ private:
             int32_t pixelX = static_cast<int32_t>(round(currentX));
             int32_t pixelY = static_cast<int32_t>(round(currentY));
 
-            mPixelRenderer->SetPixel(pixelX, pixelY, color);
+            mColorBuffer.SetPixel(pixelX, pixelY, color);
 
 			currentX += xInc;
 			currentY += yInc;
@@ -850,30 +536,6 @@ private:
 		};
 	}
 
-    glm::vec3 RotateAboutY(const glm::vec3& point, float angle)
-    {
-        const float s = sin(angle);
-        const float c = cos(angle);
-
-        return {
-            point.x * c - point.z * s,
-            point.y,
-            point.x * s + point.z * c,
-        };
-    }
-
-    glm::vec3 RotateAboutZ(const glm::vec3& point, float angle)
-	{
-		const float s = sin(angle);
-		const float c = cos(angle);
-
-        return {
-			point.x * c - point.y * s,
-			point.x * s + point.y * c,
-			point.z
-		};
-    }    
-
 	void DrawRectangle(int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
 	{
         for (int32_t i = 0; i <= width; i += 1)
@@ -882,7 +544,7 @@ private:
             {
                 const int32_t currentX = x + i;
                 const int32_t currentY = y + j;
-                mPixelRenderer->SetPixel(currentX, currentY, color);
+                mColorBuffer.SetPixel(currentX, currentY, color);
             }
         }
 	}
@@ -898,7 +560,7 @@ private:
             {
 				if (x % interval == 0 || y % interval == 0)
 				{
-					mPixelRenderer->SetPixel(x, y, 0xFFFFFFFF);
+                    mColorBuffer.SetPixel(x, y, 0xFFFFFFFF);
 				}
             }
         }
@@ -913,7 +575,7 @@ private:
 
         for (int32_t y = yStart; y <= yEnd; ++y)
         {
-            mPixelRenderer->SetPixel(x, y, color);
+            mColorBuffer.SetPixel(x, y, color);
         }
     }
 
@@ -926,17 +588,19 @@ private:
 
         for (int32_t x = xStart; x <= xEnd; ++x)
         {
-            mPixelRenderer->SetPixel(x, y, color);
+            mColorBuffer.SetPixel(x, y, color);
         }
     }
-
-    std::unique_ptr<PixelRenderer> mPixelRenderer;
+    
 	std::vector<Triangle> mTrianglesToRender;
 	std::unique_ptr<Mesh> mMesh;
     std::unique_ptr<Texture> mTexture;
     DirectionalLight mDirectionalLight;
-	ZBuffer mZBuffer;
-	Camera mCamera;
+	
+	ColorBuffer mColorBuffer;
+    ZBuffer mZBuffer;
+	
+    Camera mCamera;
     glm::mat4 mProjectionMatrix;
 	std::array<Plane, 6> mClippingPlanes;
     bool mApplyFillRule = false;
