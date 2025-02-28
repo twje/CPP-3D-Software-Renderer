@@ -54,54 +54,49 @@ enum class RenderMethod
 class ColorBuffer
 {
 public:
-    ColorBuffer(AppContext& context)
+    ColorBuffer(AppContext& context, const glm::uvec2& size)
         : mContext(context)
-        , mTexture(context.mRenderer, glm::uvec2(context.GetWindowSize()))
-        , mBuffer(context.GetWindowSize().x * context.GetWindowSize().y, 0)
+        , mSize(size)
+        , mTexture(context.mRenderer, size)
+        , mFrameBuffer(size.x* size.y, 0)
     { }
 
     bool IsValid() const { return mTexture.IsValid(); }
-
+    
     void Clear(uint32_t color)
     {
-        std::fill(mBuffer.begin(), mBuffer.end(), color);
-    }
-
-    void SetPixel(int32_t x, int32_t y, int32_t color)
-    {
-		const glm::ivec2 windowSize = mContext.GetWindowSize();
-		uint32_t* texData = mBuffer.data();
-
-        if (x > 0 && x < windowSize.x && y > 0 && y < windowSize.y)
+        if (color == 0)
         {
-            texData[y * windowSize.x + x] = color;
+            std::memset(mFrameBuffer.data(), 0, mFrameBuffer.size() * sizeof(uint32_t));
+        }
+        else
+        {
+            std::fill(mFrameBuffer.begin(), mFrameBuffer.end(), color);
         }
     }
-
-    void UpdateTexture()
+    
+    inline void SetPixel(int32_t x, int32_t y, uint32_t color)
     {
-        if (mTexture.IsValid())
+        if (x >= 0 && x < static_cast<int32_t>(mSize.x) && y >= 0 && y < static_cast<int32_t>(mSize.y))
         {
-            SDL_UpdateTexture(
-                mTexture.GetTexture(), 
-                nullptr, mBuffer.data(), 
-                mContext.GetWindowSize().x * sizeof(uint32_t)
-            );
+            mFrameBuffer[y * mSize.x + x] = color;
         }
     }
-
+    
     void Render()
     {
         if (mTexture.IsValid())
         {
+            SDL_UpdateTexture(mTexture.GetTexture(), nullptr, mFrameBuffer.data(), mSize.x * sizeof(uint32_t));
             SDL_RenderCopy(mContext.mRenderer.GetSDLRenderer(), mTexture.GetTexture(), nullptr, nullptr);
         }
     }
 
 private:
     AppContext& mContext;
+    glm::uvec2 mSize;
     SDLTexture mTexture;
-    std::vector<uint32_t> mBuffer;
+    std::vector<uint32_t> mFrameBuffer;
 };
 
 //------------------------------------------------------------------------------
@@ -146,7 +141,7 @@ class PixelRenderer
 {
 public:
     PixelRenderer(AppContext& context)
-        : mColorBuffer(context)
+        : mColorBuffer(context, context.GetWindowSize())
     { }
 
     bool IsValid() const { return mColorBuffer.IsValid(); }
@@ -163,7 +158,6 @@ public:
 
     void Render()
     {
-        mColorBuffer.UpdateTexture();
 		mColorBuffer.Render();
     }
 
@@ -187,6 +181,15 @@ public:
 	glm::vec3 mDirection;           // Direction camera is pointing
 	glm::vec3 mFowardVelocity;      // Direction camera is moving
     float mYawAngle;
+};
+
+//------------------------------------------------------------------------------
+class SimpleRendererApplication : public Application
+{
+public:
+    SimpleRendererApplication(const AppConfig& config)
+        : Application(config)
+    { }
 };
 
 //------------------------------------------------------------------------------
@@ -944,9 +947,10 @@ std::unique_ptr<Application> CreateApplication()
 {
 	AppConfig config;
 	config.mWindowTitle = "My Custom SDL App";
-	config.mFullscreen = true;
-	config.mUseNativeResolution = true;
+	config.mFullscreen = false;
+	config.mUseNativeResolution = false;
 	config.mMonitorIndex = 1;
+	config.mWindowSize = { 800, 600 };
 
 	return std::make_unique<RendererApplication>(config);
 }
