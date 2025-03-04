@@ -8,6 +8,8 @@
 #include "Clipping.h"
 #include "ColorBuffer.h"
 #include "GeometryRenderer.h"
+#include "TriangleRasterizer.h"
+#include "ZBuffer.h"
 
 // Core
 #include "Core/AppCore.h"
@@ -53,43 +55,6 @@ enum class RenderMethod
 };
 
 //------------------------------------------------------------------------------
-class ZBuffer
-{
-public:
-    ZBuffer(AppContext& context)
-        : mBuffer(context.GetWindowSize().x* context.GetWindowSize().y, 1.0f)
-		, mSize(context.GetWindowSize())
-    { }
-
-    void Clear()
-    {
-		std::fill(mBuffer.begin(), mBuffer.end(), 1.0f);
-    }
-
-    void SetDepth(int32_t x, int32_t y, float depth)
-    {   
-        if (x >= 0 && x < mSize.x && y >= 0 && y < mSize.y)
-        {
-            mBuffer[y * mSize.x + x] = depth;
-        }		
-    }
-
-    float GetDepth(int32_t x, int32_t y) const
-    {        
-        if (x >= 0 && x < mSize.x && y >= 0 && y < mSize.y)
-		{
-            return mBuffer[y * mSize.x + x];
-		}
-
-		return 1.0f;		
-    }
-
-private:
-    std::vector<float> mBuffer;
-	glm::ivec2 mSize;
-};
-
-//------------------------------------------------------------------------------
 class Camera
 {
 public:
@@ -116,16 +81,170 @@ public:
         , mColorBuffer(GetContext(), { 128, 128 })
     { }
 
+    virtual void OnEvent(const SDL_Event& event, float timeslice)
+    {
+        (void)timeslice; // Unused
+
+        if (event.type == SDL_KEYDOWN)
+        {
+            if (event.key.keysym.sym == SDLK_1)
+            {
+                mDrawTriangle0 = !mDrawTriangle0;
+            }
+            else if (event.key.keysym.sym == SDLK_2)
+            {
+                mDrawTriangle1 = !mDrawTriangle1;
+            }
+        }
+    }
+
     virtual void OnRender() override
     {
+        static std::vector<glm::vec2> vertices = {
+            { 40, 40 },
+            { 80, 40 },
+            { 40, 80 },
+            { 90, 90 }
+        };
+
+        static std::vector<glm::vec3> colors = {
+            {0xFF, 0x00, 0x00 },
+            {0x00, 0xFF, 0x00 },
+            {0x00, 0x00, 0xFF }
+        };
+
+        float angle = static_cast<float>(SDL_GetTicks() / 1000.0f * 0.1f);
+        glm::vec2 center = { 60, 60 };
+
+        glm::vec2 v0 = Rotate(vertices[0], center, angle);
+        glm::vec2 v1 = Rotate(vertices[1], center, angle);
+        glm::vec2 v2 = Rotate(vertices[2], center, angle);
+        glm::vec2 v3 = Rotate(vertices[3], center, angle);
+
         mColorBuffer.Clear(0x00000000);
-		mColorBuffer.SetPixel(0, 0, 0xFFFFFFFF);
-        mColorBuffer.SetPixel(10, 10, 0xFFFFFFFF);
+        if (mDrawTriangle0)
+        {
+            DrawFilledTriangle(
+                { v0, v1, v2 },
+                { colors[0], colors[0], colors[0] }
+            );
+        }
+        if (mDrawTriangle1)
+        {
+            DrawFilledTriangle(
+                { v3, v2, v1 },
+                { colors[1], colors[1], colors[1] }
+            );
+        }
         mColorBuffer.Render();
     }
 
 private:
+    void DrawFilledTriangle(const std::array<glm::vec2, 3>& vertices, const std::array<glm::vec3, 3>& colors)
+    {
+        // Vertex positions (integer screen coordinates)
+        glm::vec2 p0 = vertices[0];
+        glm::vec2 p1 = vertices[1];
+        glm::vec2 p2 = vertices[2];
+
+        // Compute inverse area for barycentric interpolation
+        float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
+
+        // Compute bounding box
+        int32_t xMin = static_cast<int32_t>(std::ceil(std::min({ p0.x, p1.x, p2.x })));
+        int32_t yMin = static_cast<int32_t>(std::ceil(std::min({ p0.y, p1.y, p2.y })));
+        int32_t xMax = static_cast<int32_t>(std::ceil(std::max({ p0.x, p1.x, p2.x })));
+        int32_t yMax = static_cast<int32_t>(std::ceil(std::max({ p0.y, p1.y, p2.y })));
+
+        // Precompute edge function step deltas for rasterization
+        float deltaEdge0X = (p1.y - p2.y);
+        float deltaEdge1X = (p2.y - p0.y);
+        float deltaEdge2X = (p0.y - p1.y);
+        float deltaEdge0Y = (p2.x - p1.x);
+        float deltaEdge1Y = (p0.x - p2.x);
+        float deltaEdge2Y = (p1.x - p0.x);
+
+        // Compute edge function values for the top-left pixel
+        glm::ivec2 topLeftPixel = { xMin + 0.5f, yMin + 0.5f };
+        float edge0 = EdgeCrossProduct(p1, p2, topLeftPixel);
+        float edge1 = EdgeCrossProduct(p2, p0, topLeftPixel);
+        float edge2 = EdgeCrossProduct(p0, p1, topLeftPixel);
+
+        // Loop over the bounding box (rasterization)
+        for (int32_t y = yMin; y < yMax; y++)
+        {
+            float e0 = edge0;
+            float e1 = edge1;
+            float e2 = edge2;
+
+            for (int32_t x = xMin; x < xMax; x++)
+            {
+                // Check if the pixel is inside the triangle
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                {
+                    // Compute barycentric weights
+                    float alpha = e0 * invTriangleArea;
+                    float beta = e1 * invTriangleArea;
+                    float gamma = e2 * invTriangleArea;
+
+                    // Interpolate color                    
+                    uint32_t a = 0xff;
+                    uint32_t r = static_cast<uint32_t>(alpha * colors[0].r + beta * colors[1].r + gamma * colors[2].r);
+                    uint32_t g = static_cast<uint32_t>(alpha * colors[0].g + beta * colors[1].g + gamma * colors[2].g);
+                    uint32_t b = static_cast<uint32_t>(alpha * colors[0].b + beta * colors[1].b + gamma * colors[2].b);
+
+                    uint32_t interpolatedColor = 0x00000000;
+                    interpolatedColor = (interpolatedColor | a) << 8;
+                    interpolatedColor = (interpolatedColor | b) << 8;
+                    interpolatedColor = (interpolatedColor | g) << 8;
+                    interpolatedColor = (interpolatedColor | r);
+
+                    mColorBuffer.SetPixel(x, y, interpolatedColor);
+                }
+
+                // Step edge functions in X direction
+                e0 += deltaEdge0X;
+                e1 += deltaEdge1X;
+                e2 += deltaEdge2X;
+            }
+
+            // Step edge functions in Y direction
+            edge0 += deltaEdge0Y;
+            edge1 += deltaEdge1Y;
+            edge2 += deltaEdge2Y;
+        }
+    }
+
+    glm::vec4 Rotate(glm::vec2 v, glm::vec2 center, float angle)
+    {
+        glm::vec4 rot;
+        v.x -= center.x;
+        v.y -= center.y;
+        rot.x = v.x * cos(angle) - v.y * sin(angle);
+        rot.y = v.x * sin(angle) + v.y * cos(angle);
+        rot.x += center.x;
+        rot.y += center.y;
+
+        return rot;
+    }
+
+    float EdgeCrossProduct(const glm::vec2& a, const glm::vec2& b, const glm::vec2 point)
+    {
+        return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+    }
+
+    bool IsFlatTopOrLeftEdge(const glm::ivec2& start, const glm::ivec2& end)
+    {
+        glm::ivec2 edge = end - start;
+        bool isFlatTopEdge = (edge.y == 0 && edge.x > 0);
+        bool isLeftEdge = (edge.y < 0);
+
+        return isFlatTopEdge || isLeftEdge;
+    }
+
     ColorBuffer mColorBuffer;
+    bool mDrawTriangle0 = false;
+    bool mDrawTriangle1 = false;
 };
 
 //------------------------------------------------------------------------------
@@ -250,7 +369,7 @@ public:
             }
             
             // Clipping (enter with 1 triangle, exit with 0 or more triangles)        
-            for (Triangle& clippedTriangle : ClipWithFrustum(mClippingPlanes, triangle))
+            for (Triangle& clippedTriangle : ClipWithFrustum(mClippingPlanes, triangle))            
             {                
                 for (size_t j = 0; j < 3; j++)
                 {
@@ -284,13 +403,13 @@ public:
     virtual void OnRender() override
     {
 		mColorBuffer.Clear(0x00000000);
-                		
+
         auto start = std::chrono::high_resolution_clock::now();
         for (Triangle& triangle : mTrianglesToRender)
         {
             const auto& vertices = triangle.mVertices;
 
-            DrawTexturedTriangle(
+            DrawTexturedTriangle(mColorBuffer, mZBuffer,
                 { vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
                 { vertices[0].mUV, vertices[1].mUV, vertices[2].mUV },
                 *mTexture);
@@ -349,104 +468,104 @@ private:
 		return dotNormalCamera > 0.0f;
     }     
 
-    void DrawTexturedTriangle(const std::array<glm::vec4, 3>& vertices, const std::array<glm::vec2, 3>& uvs,
-                              const Texture& texture)
-    {
-        // Vertex positions (integer screen coordinates)
-        glm::ivec2 p0 = vertices[0];
-        glm::ivec2 p1 = vertices[1];
-        glm::ivec2 p2 = vertices[2];
+    //void DrawTexturedTriangle(const std::array<glm::vec4, 3>& vertices, const std::array<glm::vec2, 3>& uvs,
+    //                          const Texture& texture)
+    //{
+    //    // Vertex positions (integer screen coordinates)
+    //    glm::ivec2 p0 = vertices[0];
+    //    glm::ivec2 p1 = vertices[1];
+    //    glm::ivec2 p2 = vertices[2];
 
-        // Precompute inverse depth for perspective-correct interpolation
-        float invW0 = 1.0f / vertices[0].w;
-        float invW1 = 1.0f / vertices[1].w;
-        float invW2 = 1.0f / vertices[2].w;
+    //    // Precompute inverse depth for perspective-correct interpolation
+    //    float invW0 = 1.0f / vertices[0].w;
+    //    float invW1 = 1.0f / vertices[1].w;
+    //    float invW2 = 1.0f / vertices[2].w;
 
-        // Texture coordinates for each vertex
-        glm::vec2 uv0 = uvs[0];
-        glm::vec2 uv1 = uvs[1];
-        glm::vec2 uv2 = uvs[2];
+    //    // Texture coordinates for each vertex
+    //    glm::vec2 uv0 = uvs[0];
+    //    glm::vec2 uv1 = uvs[1];
+    //    glm::vec2 uv2 = uvs[2];
 
-        // Compute inverse area for barycentric interpolation
-        float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
+    //    // Compute inverse area for barycentric interpolation
+    //    float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
 
-        // Compute bounding box
-        int32_t xMin = std::min({ p0.x, p1.x, p2.x });
-        int32_t yMin = std::min({ p0.y, p1.y, p2.y });
-        int32_t xMax = std::max({ p0.x, p1.x, p2.x });
-        int32_t yMax = std::max({ p0.y, p1.y, p2.y });
+    //    // Compute bounding box
+    //    int32_t xMin = std::min({ p0.x, p1.x, p2.x });
+    //    int32_t yMin = std::min({ p0.y, p1.y, p2.y });
+    //    int32_t xMax = std::max({ p0.x, p1.x, p2.x });
+    //    int32_t yMax = std::max({ p0.y, p1.y, p2.y });
 
-        // Precompute edge function step deltas for rasterization
-        int deltaEdge0X = (p1.y - p2.y);
-        int deltaEdge1X = (p2.y - p0.y);
-        int deltaEdge2X = (p0.y - p1.y);
-        int deltaEdge0Y = (p2.x - p1.x);
-        int deltaEdge1Y = (p0.x - p2.x);
-        int deltaEdge2Y = (p1.x - p0.x);
+    //    // Precompute edge function step deltas for rasterization
+    //    int deltaEdge0X = (p1.y - p2.y);
+    //    int deltaEdge1X = (p2.y - p0.y);
+    //    int deltaEdge2X = (p0.y - p1.y);
+    //    int deltaEdge0Y = (p2.x - p1.x);
+    //    int deltaEdge1Y = (p0.x - p2.x);
+    //    int deltaEdge2Y = (p1.x - p0.x);
 
-        // Compute edge function values for the top-left pixel
-        glm::ivec2 topLeftPixel = { xMin, yMin };
-        int32_t edge0 = EdgeCrossProduct(p1, p2, topLeftPixel);
-        int32_t edge1 = EdgeCrossProduct(p2, p0, topLeftPixel);
-        int32_t edge2 = EdgeCrossProduct(p0, p1, topLeftPixel);
+    //    // Compute edge function values for the top-left pixel
+    //    glm::ivec2 topLeftPixel = { xMin, yMin };
+    //    int32_t edge0 = EdgeCrossProduct(p1, p2, topLeftPixel);
+    //    int32_t edge1 = EdgeCrossProduct(p2, p0, topLeftPixel);
+    //    int32_t edge2 = EdgeCrossProduct(p0, p1, topLeftPixel);
 
-        // Texture size for coordinate clamping
-        const glm::ivec2 texSize = texture.GetSize();        
+    //    // Texture size for coordinate clamping
+    //    const glm::ivec2 texSize = texture.GetSize();        
 
-        // Loop over the bounding box (rasterization)
-        for (int32_t y = yMin; y < yMax; y++)
-        {
-            int32_t e0 = edge0;
-            int32_t e1 = edge1;
-            int32_t e2 = edge2;
+    //    // Loop over the bounding box (rasterization)
+    //    for (int32_t y = yMin; y < yMax; y++)
+    //    {
+    //        int32_t e0 = edge0;
+    //        int32_t e1 = edge1;
+    //        int32_t e2 = edge2;
 
-            for (int32_t x = xMin; x < xMax; x++)
-            {
-                // Check if the pixel is inside the triangle
-                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
-                {
-                    // Compute barycentric weights
-                    float alpha = e0 * invTriangleArea;
-                    float beta = e1 * invTriangleArea;
-                    float gamma = e2 * invTriangleArea;
+    //        for (int32_t x = xMin; x < xMax; x++)
+    //        {
+    //            // Check if the pixel is inside the triangle
+    //            if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+    //            {
+    //                // Compute barycentric weights
+    //                float alpha = e0 * invTriangleArea;
+    //                float beta = e1 * invTriangleArea;
+    //                float gamma = e2 * invTriangleArea;
 
-                    // Perspective-correct depth interpolation
-                    float interpolatedInvW = alpha * invW0 + beta * invW1 + gamma * invW2;
-                    float depth = 1.0f - interpolatedInvW;
+    //                // Perspective-correct depth interpolation
+    //                float interpolatedInvW = alpha * invW0 + beta * invW1 + gamma * invW2;
+    //                float depth = 1.0f - interpolatedInvW;
 
-                    // Z-buffer test
-                    float currentDepth = mZBuffer.GetDepth(x, y);
-                    if (depth < currentDepth)
-                    {
-                        // Perspective-correct UV interpolation
-                        float u = (alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2)) / interpolatedInvW;
-                        float v = (alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2)) / interpolatedInvW;
+    //                // Z-buffer test
+    //                float currentDepth = mZBuffer.GetDepth(x, y);
+    //                if (depth < currentDepth)
+    //                {
+    //                    // Perspective-correct UV interpolation
+    //                    float u = (alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2)) / interpolatedInvW;
+    //                    float v = (alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2)) / interpolatedInvW;
 
-                        // Convert UV to texture coordinates (modulo for wrapping)
-                        int32_t texX = static_cast<int32_t>(u * (texSize.x - 1)) % texSize.x;
-                        int32_t texY = static_cast<int32_t>(v * (texSize.y - 1)) % texSize.y;
-                        if (texX < 0) texX += texSize.x;
-                        if (texY < 0) texY += texSize.y;
+    //                    // Convert UV to texture coordinates (modulo for wrapping)
+    //                    int32_t texX = static_cast<int32_t>(u * (texSize.x - 1)) % texSize.x;
+    //                    int32_t texY = static_cast<int32_t>(v * (texSize.y - 1)) % texSize.y;
+    //                    if (texX < 0) texX += texSize.x;
+    //                    if (texY < 0) texY += texSize.y;
 
-                        // Fetch texel color and render pixel
-						uint32_t color = texture.GetPixel(texX, texY);
-                        mColorBuffer.SetPixel(x, y, color);
-                        mZBuffer.SetDepth(x, y, depth);
-                    }
-                }
+    //                    // Fetch texel color and render pixel
+				//		uint32_t color = texture.GetPixel(texX, texY);
+    //                    mColorBuffer.SetPixel(x, y, color);
+    //                    mZBuffer.SetDepth(x, y, depth);
+    //                }
+    //            }
 
-                // Step edge functions in X direction
-                e0 += deltaEdge0X;
-                e1 += deltaEdge1X;
-                e2 += deltaEdge2X;
-            }
+    //            // Step edge functions in X direction
+    //            e0 += deltaEdge0X;
+    //            e1 += deltaEdge1X;
+    //            e2 += deltaEdge2X;
+    //        }
 
-            // Step edge functions in Y direction
-            edge0 += deltaEdge0Y;
-            edge1 += deltaEdge1Y;
-            edge2 += deltaEdge2Y;
-        }
-    }
+        //    // Step edge functions in Y direction
+        //    edge0 += deltaEdge0Y;
+        //    edge1 += deltaEdge1Y;
+        //    edge2 += deltaEdge2Y;
+        //}
+    //}
 
     int32_t EdgeCrossProduct(const glm::ivec2& a, const glm::ivec2& b, const glm::ivec2 point)
     {
