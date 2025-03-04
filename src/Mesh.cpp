@@ -9,13 +9,6 @@
 #include <cstdio>
 
 //------------------------------------------------------------------------------
-Mesh::Mesh()
-	: mRotation(0.0f)
-	, mScale(1.0f)
-	, mTranslation(0.0f)
-{ }
-
-//------------------------------------------------------------------------------
 void Mesh::Load(const std::vector<glm::vec3>& vertices, const std::vector<glm::vec3>& normals, const std::vector<glm::vec2>& uvs,                
                 const std::vector<Face>& faces)
 {

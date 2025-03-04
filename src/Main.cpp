@@ -256,6 +256,14 @@ struct LineSegment
 };
 
 //------------------------------------------------------------------------------
+struct Transform
+{
+	glm::vec3 mRotation;
+    glm::vec3 mScale;
+	glm::vec3 mTranslation;
+};
+
+//------------------------------------------------------------------------------
 class RendererApplication : public Application
 {
 public:
@@ -339,11 +347,16 @@ public:
         mTrianglesToRender.clear();        
 		mLineSegments.clear();
 
-        mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
-        mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
-        mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });
+		static Transform transform;
+		transform.mRotation.y += 1.0f;
+		transform.mScale = { 1.0f, 1.0f, 1.0f };
+		transform.mTranslation = { 0.0f, 0.0f, 4.0f };
 
-        glm::mat4 modelMatrix = ComputeModelMatrix(*mMesh);
+        /*mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
+        mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
+        mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });*/
+
+        glm::mat4 modelMatrix = ComputeModelMatrix(transform);
 
         // Init with z-axis pointing forward
         glm::vec3 target{ 0.0f, 0.0f, 1.0f };
@@ -366,6 +379,28 @@ public:
                 int32_t index = face.mVertexIndicies[j];
 				sharedVertexFaces[index].push_back(face);
 			}
+        }
+
+        for (const auto& [vertexIndex, faces] : sharedVertexFaces)
+        {
+            // Ensure each vertex index maps to at least one face
+            assert(!faces.empty() && "Error: Vertex index must be shared by at least one face!");
+
+            std::cout << "Vertex Index: " << vertexIndex << " is shared by faces: ";
+
+            for (const Face& face : faces)
+            {
+                // Ensure that the vertex actually exists in the face
+                assert((face.mVertexIndicies[0] == vertexIndex ||
+                    face.mVertexIndicies[1] == vertexIndex ||
+                    face.mVertexIndicies[2] == vertexIndex) &&
+                    "Error: Face does not actually contain this vertex!");
+
+                std::cout << "(" << face.mVertexIndicies[0] << ", "
+                    << face.mVertexIndicies[1] << ", "
+                    << face.mVertexIndicies[2] << ") ";
+            }
+            std::cout << std::endl;
         }
 
         // Build up a list of projected triangles to render
@@ -512,16 +547,15 @@ private:
 		return transformedPoint;
     }
 
-    glm::mat4 ComputeModelMatrix(const Mesh& mesh)
+    glm::mat4 ComputeModelMatrix(const Transform& transform)
     {
-		glm::mat4 model = glm::mat4(1.0f);
-        (void)mesh;
+		glm::mat4 model = glm::mat4(1.0f);        
 
-		model *= CreateTranslationMatrix(mesh.GetTranslation());    // Applied 5th
-	    model *= CreateRotateAboutZMatrix(mesh.GetRotation().z);    // Applied 4th
-		model *= CreateRotateAboutYMatrix(mesh.GetRotation().y);	// Applied 3rd
-        model *= CreateRotateAboutXMatrix(mesh.GetRotation().x);    // Applied 2nd  
-		model *= CreateScaleMatrix(mesh.GetScale());                // Applied 1st
+		model *= CreateTranslationMatrix(transform.mTranslation);   // Applied 5th
+	    model *= CreateRotateAboutZMatrix(transform.mRotation.z);   // Applied 4th
+		model *= CreateRotateAboutYMatrix(transform.mRotation.y);   // Applied 3rd
+        model *= CreateRotateAboutXMatrix(transform.mRotation.x);   // Applied 2nd  
+		model *= CreateScaleMatrix(transform.mScale);               // Applied 1st
 
 		return model;
     }
