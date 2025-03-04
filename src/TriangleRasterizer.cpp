@@ -6,6 +6,7 @@
 #include "ColorBuffer.h"
 #include "ZBuffer.h"
 #include "Texture.h"
+#include "GeometryRenderer.h"
 
 // Third party
 #include <glm/glm.hpp>
@@ -20,8 +21,25 @@ static int32_t EdgeCrossProduct(const glm::ivec2& a, const glm::ivec2& b, const 
 }
 
 //------------------------------------------------------------------------------
-void DrawTexturedTriangle(ColorBuffer& colorBuffer, ZBuffer& zbuffer, const std::array<glm::vec4, 3>& vertices, 
-                          const std::array<glm::vec2, 3>& uvs, const Texture& texture)
+static uint32_t LightApplyIntensity(uint32_t originalColor, float percentageFactor) 
+{
+    if (percentageFactor < 0) { percentageFactor = 0; }
+    if (percentageFactor > 1) { percentageFactor = 1; }
+
+    uint32_t a = (originalColor & 0xFF000000);
+    uint32_t r = static_cast<uint32_t>((originalColor & 0x00FF0000) * percentageFactor);
+    uint32_t g = static_cast<uint32_t>((originalColor & 0x0000FF00) * percentageFactor);
+    uint32_t b = static_cast<uint32_t>((originalColor & 0x000000FF) * percentageFactor);
+
+    uint32_t new_color = a | (r & 0x00FF0000) | (g & 0x0000FF00) | (b & 0x000000FF);
+
+    return new_color;
+}
+
+
+//------------------------------------------------------------------------------
+void DrawTexturedTriangle(ColorBuffer& colorBuffer, ZBuffer& zbuffer, const std::array<glm::vec4, 3>& vertices, const std::array<glm::vec2, 3>& uvs, 
+                          const std::array<float, 3>& intensity, const Texture& texture)
 {
     // Vertex positions (integer screen coordinates)
     glm::ivec2 p0 = vertices[0];
@@ -92,6 +110,9 @@ void DrawTexturedTriangle(ColorBuffer& colorBuffer, ZBuffer& zbuffer, const std:
                     // Perspective-correct UV interpolation
                     float u = (alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2)) / interpolatedInvW;
                     float v = (alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2)) / interpolatedInvW;
+                    
+					float interpolatedIntensity  = (alpha * (intensity[0] * invW0) + beta * (intensity[1] * invW1) + gamma * (intensity[2] * invW2)) / interpolatedInvW;
+					interpolatedIntensity = std::max(0.0f, std::min(1.0f, interpolatedIntensity));
 
                     // Convert UV to texture coordinates (modulo for wrapping)
                     int32_t texX = static_cast<int32_t>(u * (texSize.x - 1)) % texSize.x;
@@ -100,7 +121,7 @@ void DrawTexturedTriangle(ColorBuffer& colorBuffer, ZBuffer& zbuffer, const std:
                     if (texY < 0) texY += texSize.y;
 
                     // Fetch texel color and render pixel
-                    uint32_t color = texture.GetPixel(texX, texY);
+                    uint32_t color = LightApplyIntensity(texture.GetPixel(texX, texY), interpolatedIntensity);
                     colorBuffer.SetPixel(x, y, color);
                     zbuffer.SetDepth(x, y, depth);
                 }
@@ -117,4 +138,13 @@ void DrawTexturedTriangle(ColorBuffer& colorBuffer, ZBuffer& zbuffer, const std:
         edge1 += deltaEdge1Y;
         edge2 += deltaEdge2Y;
     }
+}
+
+//------------------------------------------------------------------------------
+void DrawWireframeTriangle(ColorBuffer& colorBuffer, const std::array<glm::vec4, 3>& vertices, uint32_t color)
+{
+	// Draw triangle edges
+	DrawLine(colorBuffer, glm::ivec2(vertices[0]), glm::ivec2(vertices[1]), color);
+	DrawLine(colorBuffer, glm::ivec2(vertices[1]), glm::ivec2(vertices[2]), color);
+	DrawLine(colorBuffer, glm::ivec2(vertices[2]), glm::ivec2(vertices[0]), color);
 }

@@ -12,7 +12,7 @@
 struct Vertex
 {
 	glm::vec4 mPoint;
-	glm::vec2 mNormal;
+	glm::vec3 mNormal;
 	glm::vec2 mUV;
 };
 

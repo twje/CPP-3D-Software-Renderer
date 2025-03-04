@@ -19,6 +19,7 @@
 // Third party
 #include <SDL.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 // System
 #include <functional>
@@ -248,6 +249,13 @@ private:
 };
 
 //------------------------------------------------------------------------------
+struct LineSegment
+{
+	glm::ivec2 mStart;
+	glm::ivec2 mEnd;
+};
+
+//------------------------------------------------------------------------------
 class RendererApplication : public Application
 {
 public:
@@ -260,9 +268,9 @@ public:
 
     virtual void OnCreate() override
     {
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
-		mTexture = std::make_unique<Texture>(ResolveAssetPath("drone.png"));
+		mTexture = std::make_unique<Texture>(ResolveAssetPath("cube.png"));
 
         const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
@@ -329,6 +337,7 @@ public:
 
         mZBuffer.Clear();
         mTrianglesToRender.clear();        
+		mLineSegments.clear();
 
         mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
         mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
@@ -345,19 +354,44 @@ public:
         glm::vec3 up { 0.0f, 1.0f, 0.0f };
         glm::mat4 viewMatrix = CreateLookAt(mCamera.mPosition, target, up);
 
+		// Pre-process normals for smooth shading
+		std::unordered_map<size_t, std::vector<Face>> sharedVertexFaces;
+
+        for (size_t i = 0; i < mMesh->FaceCount(); i++)
+        {
+			const Face& face = mMesh->GetFace(i);
+
+			for (size_t j = 0; j < 3; j++)
+			{
+                int32_t index = face.mVertexIndicies[j];
+				sharedVertexFaces[index].push_back(face);
+			}
+        }
+
         // Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {            
-            const Face& face = mMesh->GetFace(i);
-                        
-            Triangle triangle;
+            const Face& face = mMesh->GetFace(i);                        
+            Triangle triangle = FaceToTriangle(*mMesh, mMesh->GetFace(i));
             
             for (size_t j = 0; j < 3; j++)
             {
-                Vertex& vertexData = triangle.mVertices[j];                
-                vertexData.mPoint = glm::vec4(mMesh->GetVertex(face.mVertexIndicies[j]), 1.0f);
-				vertexData.mPoint = viewMatrix * modelMatrix * vertexData.mPoint;                
-				vertexData.mUV = mMesh->GetUV(face.mTextureIndicies[j]);
+                Vertex& vertexData = triangle.mVertices[j];
+				vertexData.mPoint = viewMatrix * modelMatrix * vertexData.mPoint;
+				
+				// Average the normals of the shared vertices for smooth shading
+				const size_t vertexIndex = face.mVertexIndicies[j];                
+                
+                glm::vec3 averagedNormal { };
+				for (const Face& sharedFace : sharedVertexFaces[vertexIndex])
+				{
+                    Triangle sharedTriangle = FaceToTriangle(*mMesh, sharedFace);
+                    averagedNormal += glm::normalize(ComputeFaceNormal(sharedTriangle));
+				}
+				averagedNormal = glm::normalize(averagedNormal);				
+                vertexData.mNormal = TransformNormal(modelMatrix, viewMatrix, averagedNormal);
+				
+                //vertexData.mNormal = mMesh->GetNormal(face.mNormalIndicies[j]);
             }
 
             glm::vec3 faceNormal = ComputeFaceNormal(triangle);
@@ -373,21 +407,18 @@ public:
             {                
                 for (size_t j = 0; j < 3; j++)
                 {
-                    Vertex& vertex = clippedTriangle.mVertices[j];                    
+                    Vertex& vertex = clippedTriangle.mVertices[j];                                                           
                     
-					// Apply perspective division
-                    vertex.mPoint = ProjectVec4(mProjectionMatrix, vertex.mPoint);
+                    glm::vec3 start = vertex.mPoint;
+                    glm::vec3 end = start + vertex.mNormal;
 
-                    // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
-                    vertex.mPoint.y *= -1.0f;
+                    LineSegment lineSegment {
+                        TransformPointFromViewToScreen(windowSize, mProjectionMatrix, start),
+                        TransformPointFromViewToScreen(windowSize, mProjectionMatrix, end)
+                    };
+					mLineSegments.push_back(lineSegment);					
 
-                    // Scale into the view
-                    vertex.mPoint.x *= windowSize.x * 0.5f;
-                    vertex.mPoint.y *= windowSize.y * 0.5f;
-
-                    // Translate the projected points to the middle of the screen
-                    vertex.mPoint.x += windowSize.x * 0.5f;
-                    vertex.mPoint.y += windowSize.y * 0.5f;                    
+                    vertex.mPoint = TransformPointFromViewToScreen(windowSize, mProjectionMatrix, vertex.mPoint);                    
                 }
 
 				// Apply directional lighting
@@ -398,6 +429,22 @@ public:
                 mTrianglesToRender.push_back(clippedTriangle);
             }
         }
+    }
+
+    Triangle FaceToTriangle(const Mesh& mesh, const Face& face)
+    {
+        Triangle triangle;
+
+        for (size_t j = 0; j < 3; j++)
+        {
+            Vertex& vertexData = triangle.mVertices[j];
+            
+			vertexData.mPoint = glm::vec4(mesh.GetVertex(face.mVertexIndicies[j]), 1.0f);
+			vertexData.mUV = mesh.GetUV(face.mTextureIndicies[j]);
+            vertexData.mNormal = mesh.GetNormal(face.mNormalIndicies[j]);
+        }
+
+		return triangle;
     }
 
     virtual void OnRender() override
@@ -412,8 +459,18 @@ public:
             DrawTexturedTriangle(mColorBuffer, mZBuffer,
                 { vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
                 { vertices[0].mUV, vertices[1].mUV, vertices[2].mUV },
+                { 1.0f, 1.0f, 1.0f },
                 *mTexture);
+
+			//DrawWireframeTriangle(mColorBuffer,
+			//	{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+			//	0xFFFFFFFF);
         }
+
+		for (const LineSegment& lineSegment : mLineSegments)
+		{
+			DrawLine(mColorBuffer, lineSegment.mStart, lineSegment.mEnd, 0xFF000000);
+		}
 
         auto end = std::chrono::high_resolution_clock::now();        
         std::chrono::duration<double, std::milli> duration = end - start;
@@ -423,6 +480,38 @@ public:
     }
 
 private:
+    glm::vec3 TransformNormal(const glm::mat4& model, const glm::mat4& view, const glm::vec3 normal)
+    {
+        const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(view * model)));
+        const glm::vec3 transformedNormal = glm::normalize(normalMatrix * normal);
+
+        return transformedNormal;
+    }
+
+    glm::vec4 TransformPointFromViewToScreen(const glm::vec2& windowSize, const glm::mat4& projection, const glm::vec3& point)
+    {
+		return TransformPointFromViewToScreen(windowSize, projection, glm::vec4(point, 1.0f));
+    }
+
+    glm::vec4 TransformPointFromViewToScreen(const glm::vec2& windowSize, const glm::mat4& projection, const glm::vec4& point)
+    {        
+        // Apply perspective division
+        glm::vec4 transformedPoint = ProjectVec4(projection, point);
+
+        // Negate the Y-coordinate to correct for SDL's inverted Y-coordinate system
+        transformedPoint.y *= -1.0f;
+
+        // Scale into the view
+        transformedPoint.x *= windowSize.x * 0.5f;
+        transformedPoint.y *= windowSize.y * 0.5f;
+
+        // Translate the projected points to the middle of the screen
+        transformedPoint.x += windowSize.x * 0.5f;
+        transformedPoint.y += windowSize.y * 0.5f;
+
+		return transformedPoint;
+    }
+
     glm::mat4 ComputeModelMatrix(const Mesh& mesh)
     {
 		glm::mat4 model = glm::mat4(1.0f);
@@ -468,105 +557,6 @@ private:
 		return dotNormalCamera > 0.0f;
     }     
 
-    //void DrawTexturedTriangle(const std::array<glm::vec4, 3>& vertices, const std::array<glm::vec2, 3>& uvs,
-    //                          const Texture& texture)
-    //{
-    //    // Vertex positions (integer screen coordinates)
-    //    glm::ivec2 p0 = vertices[0];
-    //    glm::ivec2 p1 = vertices[1];
-    //    glm::ivec2 p2 = vertices[2];
-
-    //    // Precompute inverse depth for perspective-correct interpolation
-    //    float invW0 = 1.0f / vertices[0].w;
-    //    float invW1 = 1.0f / vertices[1].w;
-    //    float invW2 = 1.0f / vertices[2].w;
-
-    //    // Texture coordinates for each vertex
-    //    glm::vec2 uv0 = uvs[0];
-    //    glm::vec2 uv1 = uvs[1];
-    //    glm::vec2 uv2 = uvs[2];
-
-    //    // Compute inverse area for barycentric interpolation
-    //    float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
-
-    //    // Compute bounding box
-    //    int32_t xMin = std::min({ p0.x, p1.x, p2.x });
-    //    int32_t yMin = std::min({ p0.y, p1.y, p2.y });
-    //    int32_t xMax = std::max({ p0.x, p1.x, p2.x });
-    //    int32_t yMax = std::max({ p0.y, p1.y, p2.y });
-
-    //    // Precompute edge function step deltas for rasterization
-    //    int deltaEdge0X = (p1.y - p2.y);
-    //    int deltaEdge1X = (p2.y - p0.y);
-    //    int deltaEdge2X = (p0.y - p1.y);
-    //    int deltaEdge0Y = (p2.x - p1.x);
-    //    int deltaEdge1Y = (p0.x - p2.x);
-    //    int deltaEdge2Y = (p1.x - p0.x);
-
-    //    // Compute edge function values for the top-left pixel
-    //    glm::ivec2 topLeftPixel = { xMin, yMin };
-    //    int32_t edge0 = EdgeCrossProduct(p1, p2, topLeftPixel);
-    //    int32_t edge1 = EdgeCrossProduct(p2, p0, topLeftPixel);
-    //    int32_t edge2 = EdgeCrossProduct(p0, p1, topLeftPixel);
-
-    //    // Texture size for coordinate clamping
-    //    const glm::ivec2 texSize = texture.GetSize();        
-
-    //    // Loop over the bounding box (rasterization)
-    //    for (int32_t y = yMin; y < yMax; y++)
-    //    {
-    //        int32_t e0 = edge0;
-    //        int32_t e1 = edge1;
-    //        int32_t e2 = edge2;
-
-    //        for (int32_t x = xMin; x < xMax; x++)
-    //        {
-    //            // Check if the pixel is inside the triangle
-    //            if (e0 >= 0 && e1 >= 0 && e2 >= 0)
-    //            {
-    //                // Compute barycentric weights
-    //                float alpha = e0 * invTriangleArea;
-    //                float beta = e1 * invTriangleArea;
-    //                float gamma = e2 * invTriangleArea;
-
-    //                // Perspective-correct depth interpolation
-    //                float interpolatedInvW = alpha * invW0 + beta * invW1 + gamma * invW2;
-    //                float depth = 1.0f - interpolatedInvW;
-
-    //                // Z-buffer test
-    //                float currentDepth = mZBuffer.GetDepth(x, y);
-    //                if (depth < currentDepth)
-    //                {
-    //                    // Perspective-correct UV interpolation
-    //                    float u = (alpha * (uv0.x * invW0) + beta * (uv1.x * invW1) + gamma * (uv2.x * invW2)) / interpolatedInvW;
-    //                    float v = (alpha * (uv0.y * invW0) + beta * (uv1.y * invW1) + gamma * (uv2.y * invW2)) / interpolatedInvW;
-
-    //                    // Convert UV to texture coordinates (modulo for wrapping)
-    //                    int32_t texX = static_cast<int32_t>(u * (texSize.x - 1)) % texSize.x;
-    //                    int32_t texY = static_cast<int32_t>(v * (texSize.y - 1)) % texSize.y;
-    //                    if (texX < 0) texX += texSize.x;
-    //                    if (texY < 0) texY += texSize.y;
-
-    //                    // Fetch texel color and render pixel
-				//		uint32_t color = texture.GetPixel(texX, texY);
-    //                    mColorBuffer.SetPixel(x, y, color);
-    //                    mZBuffer.SetDepth(x, y, depth);
-    //                }
-    //            }
-
-    //            // Step edge functions in X direction
-    //            e0 += deltaEdge0X;
-    //            e1 += deltaEdge1X;
-    //            e2 += deltaEdge2X;
-    //        }
-
-        //    // Step edge functions in Y direction
-        //    edge0 += deltaEdge0Y;
-        //    edge1 += deltaEdge1Y;
-        //    edge2 += deltaEdge2Y;
-        //}
-    //}
-
     int32_t EdgeCrossProduct(const glm::ivec2& a, const glm::ivec2& b, const glm::ivec2 point)
     {
 		return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
@@ -593,6 +583,7 @@ private:
     glm::mat4 mProjectionMatrix;
 	std::array<Plane, 6> mClippingPlanes;
     bool mApplyFillRule = false;
+	std::vector<LineSegment> mLineSegments;
 };
 
 //------------------------------------------------------------------------------
