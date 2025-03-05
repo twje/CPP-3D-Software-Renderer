@@ -20,6 +20,8 @@
 #include <SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <fpm/fixed.hpp>
+#include <fpm/math.hpp> 
 
 // System
 #include <functional>
@@ -71,6 +73,43 @@ public:
 	glm::vec3 mDirection;           // Direction camera is pointing
 	glm::vec3 mFowardVelocity;      // Direction camera is moving
     float mYawAngle;
+};
+
+
+//------------------------------------------------------------------------------
+class FixedPointVector
+{
+public:
+	FixedPointVector()
+		: mX(0)
+		, mY(0)
+	{ }
+
+	template<typename T>
+	FixedPointVector(T x, T y)
+		: mX(x)
+		, mY(y)
+	{ }
+
+    FixedPointVector operator-(const FixedPointVector& other) const 
+    {
+        return { mX - other.mX, mY - other.mY };
+    }
+
+    FixedPointVector operator+(const FixedPointVector& other) const
+    {
+        return { mX - other.mX, mY - other.mY };
+    }
+
+    fpm::fixed_24_8 GetX() const { return mX; }
+    fpm::fixed_24_8 GetY() const { return mY; }
+
+    void SetX(fpm::fixed_24_8 x) { mX = x; }    
+    void SetY(fpm::fixed_24_8 y) { mY = y; }
+
+private:
+	fpm::fixed_24_8 mX;
+	fpm::fixed_24_8 mY;
 };
 
 //------------------------------------------------------------------------------
@@ -125,94 +164,84 @@ public:
         mColorBuffer.Clear(0x00000000);
         if (mDrawTriangle0)
         {
-            DrawFilledTriangle(
+            DrawFilledTrianglev1(
                 { v0, v1, v2 },
-                { colors[0], colors[0], colors[0] }
+                0xff0000ff
             );
         }
         if (mDrawTriangle1)
         {
-            DrawFilledTriangle(
+            DrawFilledTrianglev1(
                 { v3, v2, v1 },
-                { colors[1], colors[1], colors[1] }
+                0x00ff00ff
             );
         }
         mColorBuffer.Render();
     }
 
 private:
-    void DrawFilledTriangle(const std::array<glm::vec2, 3>& vertices, const std::array<glm::vec3, 3>& colors)
+    fpm::fixed_24_8 GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
     {
-        // Vertex positions (integer screen coordinates)
-        glm::vec2 p0 = vertices[0];
-        glm::vec2 p1 = vertices[1];
-        glm::vec2 p2 = vertices[2];
+		FixedPointVector ab = b - a;
+		FixedPointVector ac = c - a;
 
-        // Compute inverse area for barycentric interpolation
-        float invTriangleArea = 1.0f / static_cast<float>(EdgeCrossProduct(p0, p1, p2));
+        return ab.GetX() * ac.GetY() - ab.GetY() * ac.GetX();
+    }
 
-        // Compute bounding box
-        int32_t xMin = static_cast<int32_t>(std::ceil(std::min({ p0.x, p1.x, p2.x })));
-        int32_t yMin = static_cast<int32_t>(std::ceil(std::min({ p0.y, p1.y, p2.y })));
-        int32_t xMax = static_cast<int32_t>(std::ceil(std::max({ p0.x, p1.x, p2.x })));
-        int32_t yMax = static_cast<int32_t>(std::ceil(std::max({ p0.y, p1.y, p2.y })));
+    bool IsLeftOrTopEdge(const FixedPointVector& start, const FixedPointVector& end)
+    {
+        const FixedPointVector edge = end - start;
+        const fpm::fixed_24_8 zero { 0 };
 
-        // Precompute edge function step deltas for rasterization
-        float deltaEdge0X = (p1.y - p2.y);
-        float deltaEdge1X = (p2.y - p0.y);
-        float deltaEdge2X = (p0.y - p1.y);
-        float deltaEdge0Y = (p2.x - p1.x);
-        float deltaEdge1Y = (p0.x - p2.x);
-        float deltaEdge2Y = (p1.x - p0.x);
+        const bool isLeftEdge = (edge.GetY() > zero);
+        const bool isTopEdge = edge.GetY() == zero && edge.GetX() < zero;
 
-        // Compute edge function values for the top-left pixel
-        glm::ivec2 topLeftPixel = { xMin + 0.5f, yMin + 0.5f };
-        float edge0 = EdgeCrossProduct(p1, p2, topLeftPixel);
-        float edge1 = EdgeCrossProduct(p2, p0, topLeftPixel);
-        float edge2 = EdgeCrossProduct(p0, p1, topLeftPixel);
+        return (isLeftEdge || isTopEdge);
+    }
 
-        // Loop over the bounding box (rasterization)
-        for (int32_t y = yMin; y < yMax; y++)
+    void DrawFilledTrianglev1(const std::array<glm::vec2, 3>& vertices, uint32_t color)
+    {
+		const glm::vec2 a = vertices[0];
+        const glm::vec2 b = vertices[1];
+        const glm::vec2 c = vertices[2];
+
+		const FixedPointVector vecA { a.x, a.y };
+        const FixedPointVector vecB { b.x, b.y };
+        const FixedPointVector vecC { c.x, c.y };
+
+        // Create bounding box around triangle
+        const fpm::fixed_24_8 xMin { std::floor(std::min({ a.x, b.x, c.x })) };
+        const fpm::fixed_24_8 yMin { std::floor(std::min({ a.y, b.y, c.y })) };
+		
+        const fpm::fixed_24_8 xMax { std::ceil(std::max({ a.x, b.x, c.x })) };
+        const fpm::fixed_24_8 yMax { std::ceil(std::max({ a.y, b.y, c.y })) };        
+                
+        const fpm::fixed_24_8 zero { 0.0f };
+        const fpm::fixed_24_8 half { 0.5f };
+        const fpm::fixed_24_8 leastPreciseUnit { 1 >> 8 };
+
+		FixedPointVector point { };
+        
+        for (fpm::fixed_24_8 y = yMin; y <= yMax; y += 1)
         {
-            float e0 = edge0;
-            float e1 = edge1;
-            float e2 = edge2;
-
-            for (int32_t x = xMin; x < xMax; x++)
+            for (fpm::fixed_24_8 x = xMin; x <= xMax; x += 1)
             {
-                // Check if the pixel is inside the triangle
-                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
-                {
-                    // Compute barycentric weights
-                    float alpha = e0 * invTriangleArea;
-                    float beta = e1 * invTriangleArea;
-                    float gamma = e2 * invTriangleArea;
+                point.SetX(x + half);
+                point.SetY(y + half);
 
-                    // Interpolate color                    
-                    uint32_t a = 0xff;
-                    uint32_t r = static_cast<uint32_t>(alpha * colors[0].r + beta * colors[1].r + gamma * colors[2].r);
-                    uint32_t g = static_cast<uint32_t>(alpha * colors[0].g + beta * colors[1].g + gamma * colors[2].g);
-                    uint32_t b = static_cast<uint32_t>(alpha * colors[0].b + beta * colors[1].b + gamma * colors[2].b);
+                fpm::fixed_24_8 w0 = GetDeterminant(vecB, vecC, point);
+                fpm::fixed_24_8 w1 = GetDeterminant(vecC, vecA, point);
+                fpm::fixed_24_8 w2 = GetDeterminant(vecA, vecB, point);
+            
+                if (IsLeftOrTopEdge(vecB, vecC)) { w0 -= leastPreciseUnit; }
+                if (IsLeftOrTopEdge(vecC, vecA)) { w1 -= leastPreciseUnit; }
+                if (IsLeftOrTopEdge(vecA, vecB)) { w2 -= leastPreciseUnit; }
 
-                    uint32_t interpolatedColor = 0x00000000;
-                    interpolatedColor = (interpolatedColor | a) << 8;
-                    interpolatedColor = (interpolatedColor | b) << 8;
-                    interpolatedColor = (interpolatedColor | g) << 8;
-                    interpolatedColor = (interpolatedColor | r);
-
-                    mColorBuffer.SetPixel(x, y, interpolatedColor);
-                }
-
-                // Step edge functions in X direction
-                e0 += deltaEdge0X;
-                e1 += deltaEdge1X;
-                e2 += deltaEdge2X;
+				if (w0 >= zero && w1 >= zero && w2 >= zero)
+				{
+					mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), color);
+				}
             }
-
-            // Step edge functions in Y direction
-            edge0 += deltaEdge0Y;
-            edge1 += deltaEdge1Y;
-            edge2 += deltaEdge2Y;
         }
     }
 
@@ -244,8 +273,8 @@ private:
     }
 
     ColorBuffer mColorBuffer;
-    bool mDrawTriangle0 = false;
-    bool mDrawTriangle1 = false;
+    bool mDrawTriangle0 = true;
+    bool mDrawTriangle1 = true;
 };
 
 //------------------------------------------------------------------------------
@@ -664,5 +693,5 @@ std::unique_ptr<Application> CreateApplication()
 	config.mMonitorIndex = 1;
 	config.mWindowSize = { 800, 800 };
 
-	return std::make_unique<RendererApplication>(config);
+	return std::make_unique<SimpleRendererApplication>(config);
 }
