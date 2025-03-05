@@ -136,7 +136,20 @@ public:
             else if (event.key.keysym.sym == SDLK_2)
             {
                 mDrawTriangle1 = !mDrawTriangle1;
-            }
+			}
+			else if (event.key.keysym.sym == SDLK_3)
+			{
+				mEnableFillRule = !mEnableFillRule;
+				std::cout << "Fill rule: " << (mEnableFillRule ? "ON" : "OFF") << std::endl;
+			}
+			else if (event.key.keysym.sym == SDLK_UP)
+			{
+				mAngle += 0.1f;
+			}
+			else if (event.key.keysym.sym == SDLK_DOWN)
+			{
+				mAngle -= 0.1f;
+			}
         }
     }
 
@@ -155,33 +168,38 @@ public:
             {0x00, 0x00, 0xff, 0xff }
         };
 
-        float angle = static_cast<float>(SDL_GetTicks() / 1000.0f * 0.1f);
+        //float angle = static_cast<float>(SDL_GetTicks() / 1000.0f * 0.1f);
         glm::vec2 center = { 60, 60 };
 
-        glm::vec2 v0 = Rotate(vertices[0], center, angle);
-        glm::vec2 v1 = Rotate(vertices[1], center, angle);
-        glm::vec2 v2 = Rotate(vertices[2], center, angle);
-        glm::vec2 v3 = Rotate(vertices[3], center, angle);
+        glm::vec2 v0 = Rotate(vertices[0], center, mAngle);
+        glm::vec2 v1 = Rotate(vertices[1], center, mAngle);
+        glm::vec2 v2 = Rotate(vertices[2], center, mAngle);
+        glm::vec2 v3 = Rotate(vertices[3], center, mAngle);
 
         mColorBuffer.Clear(0x00000000);
         if (mDrawTriangle0)
         {
-            DrawFilledTrianglev1(
+            DrawTexturedTriangle1(
                 { v0, v1, v2 },
-                { colors[0], colors[1], colors[2] }
+                0xffffffff
             );
         }
         if (mDrawTriangle1)
         {
-            DrawFilledTrianglev1(
+            DrawTexturedTriangle1(
                 { v3, v2, v1 },
-                { colors[2], colors[0], colors[1] }
+                0xff0000ff
             );
         }
         mColorBuffer.Render();
     }
 
 private:
+    float EdgeCrossProduct(const glm::vec2& a, const glm::vec2& b, const glm::vec2 point)
+    {
+        return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+    }
+
     fpm::fixed_24_8 GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
     {
 		FixedPointVector ab = b - a;
@@ -195,72 +213,153 @@ private:
         const FixedPointVector edge = end - start;
         const FixedPoint zero { 0 };
 
-        const bool isLeftEdge = (edge.GetY() > zero);
-        const bool isTopEdge = edge.GetY() == zero && edge.GetX() < zero;
+        const bool isTopEdge = (edge.GetY() == zero) && (edge.GetX() > zero);
+        const bool isLeftEdge = (edge.GetY() < zero);
 
-        return (isLeftEdge || isTopEdge);
+        return (isTopEdge || isLeftEdge);
     }
 
-    void DrawFilledTrianglev1(const std::array<glm::vec2, 3>& vertices, const std::array<glm::ivec4, 3>& colors)
-    {        
-		const glm::vec2 a = vertices[0];
-        const glm::vec2 b = vertices[1];
-        const glm::vec2 c = vertices[2];
+    void DrawTexturedTriangle1(const std::array<glm::vec2, 3>& vertices, uint32_t color)
+    {
+		// Constants
+        const FixedPoint zero { 0.0f };
+        const FixedPoint half { 0.5f };
+        const FixedPoint leastPreciseUnit { 1.0f / (1 << 8) };
 
-		const FixedPointVector vecA { a.x, a.y };
-        const FixedPointVector vecB { b.x, b.y };
-        const FixedPointVector vecC { c.x, c.y };
-        
-        const FixedPoint area = GetDeterminant(vecA, vecB, vecC);
+        // Vertex positions (integer screen coordinates)
+        glm::vec2 p0 = vertices[0];
+        glm::vec2 p1 = vertices[1];
+        glm::vec2 p2 = vertices[2];
+
+        const FixedPointVector vec0 { p0.x, p0.y };
+        const FixedPointVector vec1 { p1.x, p1.y };
+        const FixedPointVector vec2 { p2.x, p2.y };
 
         // Create bounding box around triangle
-        const FixedPoint xMin { std::floor(std::min({ a.x, b.x, c.x })) };
-        const FixedPoint yMin { std::floor(std::min({ a.y, b.y, c.y })) };
-		
-        const FixedPoint xMax { std::ceil(std::max({ a.x, b.x, c.x })) };
-        const FixedPoint yMax { std::ceil(std::max({ a.y, b.y, c.y })) };
-                
-        const FixedPoint zero { 0.0f };
-        const FixedPoint half{ 0.5f };
-        const FixedPoint leastPreciseUnit { 1 >> 8 };
+        const FixedPoint xMin { std::floor(std::min({ p0.x, p1.x, p2.x })) };
+        const FixedPoint yMin { std::floor(std::min({ p0.y, p1.y, p2.y })) };
 
-		FixedPointVector point { };
+        const FixedPoint xMax { std::ceil(std::max({ p0.x, p1.x, p2.x })) };
+        const FixedPoint yMax { std::ceil(std::max({ p0.y, p1.y, p2.y })) };
+
+        // Precompute edge function step deltas for rasterization
+        FixedPoint deltaEdge0X { vec1.GetY() - vec2.GetY() };
+        FixedPoint deltaEdge1X { vec2.GetY() - vec0.GetY() };
+        FixedPoint deltaEdge2X { vec0.GetY() - vec1.GetY() };
+        FixedPoint deltaEdge0Y { vec2.GetX() - vec1.GetX() };
+        FixedPoint deltaEdge1Y { vec0.GetX() - vec2.GetX() };
+        FixedPoint deltaEdge2Y { vec1.GetX() - vec0.GetX() };
+        
+        // Rasterization fill convention (top-left rule)
+        FixedPoint bias0 = IsLeftOrTopEdge(vec1, vec2) ? zero : -leastPreciseUnit;
+        FixedPoint bias1 = IsLeftOrTopEdge(vec2, vec0) ? zero : -leastPreciseUnit;
+        FixedPoint bias2 = IsLeftOrTopEdge(vec0, vec1) ? zero : -leastPreciseUnit;
+
+        // Compute edge function values for the top-left pixel
+        FixedPointVector topLeftPixel { xMin + half, yMin + half };
+        FixedPoint edge0 = GetDeterminant(vec1, vec2, topLeftPixel);
+        FixedPoint edge1 = GetDeterminant(vec2, vec0, topLeftPixel);
+        FixedPoint edge2 = GetDeterminant(vec0, vec1, topLeftPixel);
+
+        if (mEnableFillRule)
+        {
+            edge0 += bias0;
+            edge1 += bias1;
+            edge2 += bias2;
+        }
 
         for (FixedPoint y = yMin; y <= yMax; y += 1)
         {
+            FixedPoint e0 { edge0 };
+            FixedPoint e1 { edge1 };
+            FixedPoint e2 { edge2 };
+
             for (FixedPoint x = xMin; x <= xMax; x += 1)
             {
-                point.SetX(x + half);
-                point.SetY(y + half);
+                // Check if the pixel is inside the triangle
+                if (e0 >= zero && e1 >= zero && e2 >= zero)
+                {
+                    mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), color);
 
-                FixedPoint w0 = GetDeterminant(vecB, vecC, point);
-                FixedPoint w1 = GetDeterminant(vecC, vecA, point);
-                FixedPoint w2 = GetDeterminant(vecA, vecB, point);
+					if (e0 - leastPreciseUnit < zero && bias0 == zero)
+					{
+						mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), 0xff00ffff);
+					}
+                    if (e1 - leastPreciseUnit < zero && bias1 == zero)
+                    {
+                        mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), 0xff00ffff);
+                    }
+                    if (e2 - leastPreciseUnit < zero && bias2 == zero)
+                    {
+                        mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), 0xff00ffff);
+                    }
+                }
 
-				float alpha = static_cast<float>(w0 / area);
-                float beta = static_cast<float>(w1 / area);
-                float gamma = static_cast<float>(w2 / area);
-
-                uint32_t aComponent = static_cast<uint32_t>(0xff);
-                uint32_t bComponent = static_cast<uint32_t>((alpha * colors[0].b) + (beta *colors[1].b) + (gamma * colors[2].b));
-                uint32_t gComponent = static_cast<uint32_t>((alpha * colors[0].g) + (beta *colors[1].g) + (gamma * colors[2].g));
-                uint32_t rComponent = static_cast<uint32_t>((alpha * colors[0].r) + (beta *colors[1].r) + (gamma * colors[2].r));
-
-                if (IsLeftOrTopEdge(vecB, vecC)) { w0 -= leastPreciseUnit; }
-                if (IsLeftOrTopEdge(vecC, vecA)) { w1 -= leastPreciseUnit; }
-                if (IsLeftOrTopEdge(vecA, vecB)) { w2 -= leastPreciseUnit; }
-
-                uint32_t interpolatedColor = 0x00000000;
-                interpolatedColor = (interpolatedColor | aComponent) << 8;
-                interpolatedColor = (interpolatedColor | bComponent) << 8;
-                interpolatedColor = (interpolatedColor | gComponent) << 8;
-                interpolatedColor = (interpolatedColor | rComponent);
-
-				if (w0 >= zero && w1 >= zero && w2 >= zero)
-				{
-					mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), interpolatedColor);
-				}
+                // Step edge functions in X direction
+                e0 += deltaEdge0X;
+                e1 += deltaEdge1X;
+                e2 += deltaEdge2X;
             }
+
+            // Step edge functions in Y direction
+            edge0 += deltaEdge0Y;
+            edge1 += deltaEdge1Y;
+            edge2 += deltaEdge2Y;
+        }
+    }
+
+    void DrawTexturedTriangle2(const std::array<glm::vec2, 3>& vertices, uint32_t color)
+    {
+        // Vertex positions (integer screen coordinates)
+        glm::ivec2 p0 = vertices[0];
+        glm::ivec2 p1 = vertices[1];
+        glm::ivec2 p2 = vertices[2];        
+
+        // Compute bounding box
+        int32_t xMin = std::min({ p0.x, p1.x, p2.x });
+        int32_t yMin = std::min({ p0.y, p1.y, p2.y });
+        int32_t xMax = std::max({ p0.x, p1.x, p2.x });
+        int32_t yMax = std::max({ p0.y, p1.y, p2.y });
+
+        // Precompute edge function step deltas for rasterization
+        int32_t deltaEdge0X = (p1.y - p2.y);
+        int32_t deltaEdge1X = (p2.y - p0.y);
+        int32_t deltaEdge2X = (p0.y - p1.y);
+        int32_t deltaEdge0Y = (p2.x - p1.x);
+        int32_t deltaEdge1Y = (p0.x - p2.x);
+        int32_t deltaEdge2Y = (p1.x - p0.x);
+
+        // Compute edge function values for the top-left pixel
+        glm::ivec2 topLeftPixel = { xMin, yMin };
+        int32_t edge0 = static_cast<int32_t>(EdgeCrossProduct(p1, p2, topLeftPixel));
+        int32_t edge1 = static_cast<int32_t>(EdgeCrossProduct(p2, p0, topLeftPixel));
+        int32_t edge2 = static_cast<int32_t>(EdgeCrossProduct(p0, p1, topLeftPixel));
+
+        // Loop over the bounding box (rasterization)
+        for (int32_t y = yMin; y < yMax; y++)
+        {
+            int32_t e0 = edge0;
+            int32_t e1 = edge1;
+            int32_t e2 = edge2;
+
+            for (int32_t x = xMin; x < xMax; x++)
+            {
+                // Check if the pixel is inside the triangle
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                {
+                    mColorBuffer.SetPixel(x, y, color);
+                }
+
+                // Step edge functions in X direction
+                e0 += deltaEdge0X;
+                e1 += deltaEdge1X;
+                e2 += deltaEdge2X;
+            }
+
+            // Step edge functions in Y direction
+            edge0 += deltaEdge0Y;
+            edge1 += deltaEdge1Y;
+            edge2 += deltaEdge2Y;
         }
     }
 
@@ -277,11 +376,6 @@ private:
         return rot;
     }
 
-    float EdgeCrossProduct(const glm::vec2& a, const glm::vec2& b, const glm::vec2 point)
-    {
-        return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
-    }
-
     bool IsFlatTopOrLeftEdge(const glm::ivec2& start, const glm::ivec2& end)
     {
         glm::ivec2 edge = end - start;
@@ -291,9 +385,11 @@ private:
         return isFlatTopEdge || isLeftEdge;
     }
 
-    ColorBuffer mColorBuffer;
+    ColorBuffer mColorBuffer;	
+    float mAngle = 0.0f;
     bool mDrawTriangle0 = true;
     bool mDrawTriangle1 = true;
+    bool mEnableFillRule = true;
 };
 
 //------------------------------------------------------------------------------
