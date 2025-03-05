@@ -280,7 +280,7 @@ public:
 		mTrianglesToRender.reserve(mMesh->FaceCount());
 		mTexture = std::make_unique<Texture>(ResolveAssetPath("cube.png"));
 
-        const  glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
+        const glm::vec2 windowSize = glm::vec2(GetContext().GetWindowSize());
 
 		const float aspectY = windowSize.y / windowSize.x;
         const float aspectX = windowSize.x / windowSize.y;
@@ -337,6 +337,29 @@ public:
 		}
     }
 
+    std::vector<Triangle> TransformMeshToScreen(const Mesh& mesh, const Transform& transform, glm::mat4& view, const glm::vec2& windowSize)
+    {
+        std::vector<Triangle> trianglesToRender;
+
+        const glm::mat4 model = ComputeModelMatrix(transform);
+
+        for (size_t i = 0; i < mesh.FaceCount(); i++)
+        {            
+            Triangle triangle = FaceToTriangle(*mMesh, mMesh->GetFace(i));
+
+            for (size_t j = 0; j < 3; j++)
+            {
+                Vertex& vertex = triangle.mVertices[j];
+                vertex.mPoint = view * model * vertex.mPoint;
+                vertex.mPoint = TransformPointFromViewToScreen(windowSize, mProjectionMatrix, vertex.mPoint);
+            }
+
+			trianglesToRender.push_back(triangle);
+        }
+
+		return trianglesToRender;
+    }
+
     virtual void OnUpdate(float timelice) override
     {
         (void)timelice; // Unused
@@ -352,10 +375,6 @@ public:
 		transform.mScale = { 1.0f, 1.0f, 1.0f };
 		transform.mTranslation = { 0.0f, 0.0f, 4.0f };
 
-        /*mMesh->AddRotation({ 0.0f, 1.0f, 0.0f });
-        mMesh->SetScale({ 1.0f, 1.0f, 1.0f });
-        mMesh->SetTranslation({ 0.0f, 0.0f, 4.0f });*/
-
         glm::mat4 modelMatrix = ComputeModelMatrix(transform);
 
         // Init with z-axis pointing forward
@@ -370,6 +389,10 @@ public:
 		// Pre-process normals for smooth shading
 		std::unordered_map<size_t, std::vector<Face>> sharedVertexFaces;
 
+        Transform newTransform = transform;
+		newTransform.mScale *= 1.5f;
+		mWireframeTrianglesToRender = TransformMeshToScreen(*mMesh, newTransform, viewMatrix, windowSize);
+        
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {
 			const Face& face = mMesh->GetFace(i);
@@ -502,6 +525,15 @@ public:
 			//	0xFFFFFFFF);
         }
 
+		for (Triangle& triangle : mWireframeTrianglesToRender)
+		{
+			const auto& vertices = triangle.mVertices;
+
+			DrawWireframeTriangle(mColorBuffer,
+				{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+				0xFFFFFFFF);
+		}
+
 		for (const LineSegment& lineSegment : mLineSegments)
 		{
 			DrawLine(mColorBuffer, lineSegment.mStart, lineSegment.mEnd, 0xFF000000);
@@ -606,7 +638,9 @@ private:
 	}
 
 	std::vector<Triangle> mTrianglesToRender;
-	std::unique_ptr<Mesh> mMesh;
+    std::vector<Triangle> mWireframeTrianglesToRender;
+    
+    std::unique_ptr<Mesh> mMesh;
     std::unique_ptr<Texture> mTexture;
     DirectionalLight mDirectionalLight;
 	
