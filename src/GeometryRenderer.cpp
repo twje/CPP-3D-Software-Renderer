@@ -64,6 +64,15 @@ void DrawLine(ColorBuffer& buffer, const glm::ivec2& point0, const glm::ivec2& p
 //------------------------------------------------------------------------------
 void DrawRectangle(ColorBuffer& buffer, int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
 {
+	DrawHorizontalLine(buffer, y, x, x + width, color);
+	DrawHorizontalLine(buffer, y + height, x, x + width, color);
+	DrawVerticalLine(buffer, x, y, y + height, color);
+	DrawVerticalLine(buffer, x + width, y, y + height, color);
+}
+
+//------------------------------------------------------------------------------
+void DrawFilledRectangle(ColorBuffer& buffer, int32_t x, int32_t y, int32_t width, int32_t height, int32_t color)
+{
     for (int32_t i = 0; i <= width; i += 1)
     {
         for (int32_t j = 0; j <= height; j += 1)
