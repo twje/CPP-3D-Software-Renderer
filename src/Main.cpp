@@ -115,6 +115,8 @@ private:
 //------------------------------------------------------------------------------
 class SimpleRendererApplication : public Application
 {
+	using FixedPoint = fpm::fixed_24_8;
+
 public:
     SimpleRendererApplication(const AppConfig& config)
         : Application(config)
@@ -147,10 +149,10 @@ public:
             { 90, 90 }
         };
 
-        static std::vector<glm::vec3> colors = {
-            {0xFF, 0x00, 0x00 },
-            {0x00, 0xFF, 0x00 },
-            {0x00, 0x00, 0xFF }
+        static std::vector<glm::vec4> colors = {
+            {0xff, 0x00, 0x00, 0xff },
+            {0x00, 0xff, 0x00, 0xff },
+            {0x00, 0x00, 0xff, 0xff }
         };
 
         float angle = static_cast<float>(SDL_GetTicks() / 1000.0f * 0.1f);
@@ -166,14 +168,14 @@ public:
         {
             DrawFilledTrianglev1(
                 { v0, v1, v2 },
-                0xff0000ff
+                { colors[0], colors[1], colors[2] }
             );
         }
         if (mDrawTriangle1)
         {
             DrawFilledTrianglev1(
                 { v3, v2, v1 },
-                0x00ff00ff
+                { colors[2], colors[0], colors[1] }
             );
         }
         mColorBuffer.Render();
@@ -191,7 +193,7 @@ private:
     bool IsLeftOrTopEdge(const FixedPointVector& start, const FixedPointVector& end)
     {
         const FixedPointVector edge = end - start;
-        const fpm::fixed_24_8 zero { 0 };
+        const FixedPoint zero { 0 };
 
         const bool isLeftEdge = (edge.GetY() > zero);
         const bool isTopEdge = edge.GetY() == zero && edge.GetX() < zero;
@@ -199,8 +201,8 @@ private:
         return (isLeftEdge || isTopEdge);
     }
 
-    void DrawFilledTrianglev1(const std::array<glm::vec2, 3>& vertices, uint32_t color)
-    {
+    void DrawFilledTrianglev1(const std::array<glm::vec2, 3>& vertices, const std::array<glm::ivec4, 3>& colors)
+    {        
 		const glm::vec2 a = vertices[0];
         const glm::vec2 b = vertices[1];
         const glm::vec2 c = vertices[2];
@@ -208,38 +210,55 @@ private:
 		const FixedPointVector vecA { a.x, a.y };
         const FixedPointVector vecB { b.x, b.y };
         const FixedPointVector vecC { c.x, c.y };
+        
+        const FixedPoint area = GetDeterminant(vecA, vecB, vecC);
 
         // Create bounding box around triangle
-        const fpm::fixed_24_8 xMin { std::floor(std::min({ a.x, b.x, c.x })) };
-        const fpm::fixed_24_8 yMin { std::floor(std::min({ a.y, b.y, c.y })) };
+        const FixedPoint xMin { std::floor(std::min({ a.x, b.x, c.x })) };
+        const FixedPoint yMin { std::floor(std::min({ a.y, b.y, c.y })) };
 		
-        const fpm::fixed_24_8 xMax { std::ceil(std::max({ a.x, b.x, c.x })) };
-        const fpm::fixed_24_8 yMax { std::ceil(std::max({ a.y, b.y, c.y })) };        
+        const FixedPoint xMax { std::ceil(std::max({ a.x, b.x, c.x })) };
+        const FixedPoint yMax { std::ceil(std::max({ a.y, b.y, c.y })) };
                 
-        const fpm::fixed_24_8 zero { 0.0f };
-        const fpm::fixed_24_8 half { 0.5f };
-        const fpm::fixed_24_8 leastPreciseUnit { 1 >> 8 };
+        const FixedPoint zero { 0.0f };
+        const FixedPoint half{ 0.5f };
+        const FixedPoint leastPreciseUnit { 1 >> 8 };
 
 		FixedPointVector point { };
-        
-        for (fpm::fixed_24_8 y = yMin; y <= yMax; y += 1)
+
+        for (FixedPoint y = yMin; y <= yMax; y += 1)
         {
-            for (fpm::fixed_24_8 x = xMin; x <= xMax; x += 1)
+            for (FixedPoint x = xMin; x <= xMax; x += 1)
             {
                 point.SetX(x + half);
                 point.SetY(y + half);
 
-                fpm::fixed_24_8 w0 = GetDeterminant(vecB, vecC, point);
-                fpm::fixed_24_8 w1 = GetDeterminant(vecC, vecA, point);
-                fpm::fixed_24_8 w2 = GetDeterminant(vecA, vecB, point);
-            
+                FixedPoint w0 = GetDeterminant(vecB, vecC, point);
+                FixedPoint w1 = GetDeterminant(vecC, vecA, point);
+                FixedPoint w2 = GetDeterminant(vecA, vecB, point);
+
+				float alpha = static_cast<float>(w0 / area);
+                float beta = static_cast<float>(w1 / area);
+                float gamma = static_cast<float>(w2 / area);
+
+                uint32_t aComponent = static_cast<uint32_t>(0xff);
+                uint32_t bComponent = static_cast<uint32_t>((alpha * colors[0].b) + (beta *colors[1].b) + (gamma * colors[2].b));
+                uint32_t gComponent = static_cast<uint32_t>((alpha * colors[0].g) + (beta *colors[1].g) + (gamma * colors[2].g));
+                uint32_t rComponent = static_cast<uint32_t>((alpha * colors[0].r) + (beta *colors[1].r) + (gamma * colors[2].r));
+
                 if (IsLeftOrTopEdge(vecB, vecC)) { w0 -= leastPreciseUnit; }
                 if (IsLeftOrTopEdge(vecC, vecA)) { w1 -= leastPreciseUnit; }
                 if (IsLeftOrTopEdge(vecA, vecB)) { w2 -= leastPreciseUnit; }
 
+                uint32_t interpolatedColor = 0x00000000;
+                interpolatedColor = (interpolatedColor | aComponent) << 8;
+                interpolatedColor = (interpolatedColor | bComponent) << 8;
+                interpolatedColor = (interpolatedColor | gComponent) << 8;
+                interpolatedColor = (interpolatedColor | rComponent);
+
 				if (w0 >= zero && w1 >= zero && w2 >= zero)
 				{
-					mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), color);
+					mColorBuffer.SetPixel(static_cast<int32_t>(x), static_cast<int32_t>(y), interpolatedColor);
 				}
             }
         }
