@@ -29,6 +29,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+# Fetch fpm (Header-only library)
+FetchContent_Declare(
+    fpm
+    GIT_REPOSITORY https://github.com/MikeLankamp/fpm.git
+    GIT_TAG v1.1.0
+)
+FetchContent_MakeAvailable(fpm)
+
+
 # Collect all source and header files
 file(GLOB_RECURSE ProjectSources "${CMAKE_SOURCE_DIR}/src/*.cpp")
 file(GLOB_RECURSE ProjectHeaders "${CMAKE_SOURCE_DIR}/src/*.h")
@@ -57,6 +66,7 @@ target_include_directories(3DRenderer PRIVATE
     ${SDL2_INCLUDE_DIRS}
     ${glm_SOURCE_DIR}  # Include GLM headers
     ${CMAKE_SOURCE_DIR}/vendor/stb
+    ${fpm_SOURCE_DIR}/include
 )
 
 # Add compiler flags for MSVC
