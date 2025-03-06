@@ -80,42 +80,64 @@ public:
 class FixedPointVector
 {
 public:
+    static constexpr int32_t kShift = 4;
+    static constexpr int32_t kMultiplier = 1 << kShift;
+	static constexpr int32_t kOne = 1 << kShift;
+    static constexpr int32_t kHalf = kOne >> kShift;
+
 	FixedPointVector()
 		: mX(0)
 		, mY(0)
+        , mZ(0)
+        , mW(kOne)
 	{ }
 
 	template<typename T>
-	FixedPointVector(T x, T y)
-		: mX(x)
-		, mY(y)
-	{ }
+	FixedPointVector(T x, T y, T z)
+	{
+		mX = static_cast<int32_t>(std::round(x) * kMultiplier);
+        mY = static_cast<int32_t>(std::round(y) * kMultiplier);
+        mZ = static_cast<int32_t>(std::round(z) * kMultiplier);
+		mW = kOne;
+    }
+
+    template<typename T>
+    FixedPointVector(T x, T y, T z, T w)
+    { 
+		mX = static_cast<int32_t>(std::round(x) * kMultiplier);
+        mY = static_cast<int32_t>(std::round(y) * kMultiplier);
+        mZ = static_cast<int32_t>(std::round(z) * kMultiplier);
+        mW = static_cast<int32_t>(std::round(w) * kMultiplier);
+    }
 
     FixedPointVector operator-(const FixedPointVector& other) const 
     {
-        return { mX - other.mX, mY - other.mY };
+        int32_t xComponent = (mX - other.mX) >> kShift;
+        int32_t yComponent = (mY - other.mY) >> kShift;
+        int32_t zComponent = (mZ - other.mZ) >> kShift;
+
+        return { xComponent, yComponent, zComponent };        
     }
 
     FixedPointVector operator+(const FixedPointVector& other) const
     {
-        return { mX - other.mX, mY - other.mY };
+		int32_t xComponent = (mX + other.mX) >> kShift;
+		int32_t yComponent = (mY + other.mY) >> kShift;
+		int32_t zComponent = (mZ + other.mZ) >> kShift;
+
+        return { xComponent, yComponent, zComponent };
     }
 
-    fpm::fixed_24_8 GetX() const { return mX; }
-    fpm::fixed_24_8 GetY() const { return mY; }
-
-    void SetX(fpm::fixed_24_8 x) { mX = x; }    
-    void SetY(fpm::fixed_24_8 y) { mY = y; }
-
-private:
-	fpm::fixed_24_8 mX;
-	fpm::fixed_24_8 mY;
+	int32_t mX;
+	int32_t mY;
+    int32_t mZ;
+    int32_t mW;
 };
 
 //------------------------------------------------------------------------------
 class SimpleRendererApplication : public Application
 {
-	using FixedPoint = fpm::fixed_24_8;
+	using FixedPoint = fpm::fixed_16_16;
 
 public:
     SimpleRendererApplication(const AppConfig& config)
@@ -154,7 +176,7 @@ public:
     }
 
     virtual void OnRender() override
-    {
+    {        
         static std::vector<glm::vec2> vertices = {
             { 40, 40 },
             { 80, 40 },
@@ -179,28 +201,158 @@ public:
         mColorBuffer.Clear(0x00000000);
         if (mDrawTriangle0)
         {
-            DrawTexturedTriangle1(
+            DrawTexturedTriangleV1(
                 { v0, v1, v2 },
                 0xffffffff
             );
+
+            //DrawTexturedTriangle(
+            //    { v0, v1, v2 },
+            //    0xfff00fff
+            //);
         }
-        if (mDrawTriangle1)
-        {
-            DrawTexturedTriangle1(
-                { v3, v2, v1 },
-                0xff0000ff
-            );
-        }
+        //if (mDrawTriangle1)
+        //{
+        //    DrawTexturedTriangleV1(
+        //        { v3, v2, v1 },
+        //        0xff0000ff
+        //    );
+        //    DrawTexturedTriangle(
+        //        { v0, v1, v2 },
+        //        0xffffffff
+        //    )
+        //}
         mColorBuffer.Render();
+        
     }
 
 private:
+    //------------------------------------------------------------------------------
+    void DrawTexturedTriangle(const std::array<glm::vec2, 3>& vertices, int32_t color)
+    {
+        // Vertex positions (integer screen coordinates)
+        glm::ivec2 p0 = vertices[0];
+        glm::ivec2 p1 = vertices[1];
+        glm::ivec2 p2 = vertices[2];
+
+        // Compute bounding box
+        int32_t xMin = std::min({ p0.x, p1.x, p2.x });
+        int32_t yMin = std::min({ p0.y, p1.y, p2.y });
+        int32_t xMax = std::max({ p0.x, p1.x, p2.x });
+        int32_t yMax = std::max({ p0.y, p1.y, p2.y });        
+
+        // Loop over the bounding box (rasterization)
+        for (int32_t y = yMin; y < yMax; y++)
+        {
+            for (int32_t x = xMin; x < xMax; x++)
+            {
+				float e0 = GetDeterminant(p1, p2, { x, y });
+				float e1 = GetDeterminant(p2, p0, { x, y });
+				float e2 = GetDeterminant(p0, p1, { x, y });
+
+                // Check if the pixel is inside the triangle
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                {
+					mColorBuffer.SetPixel(x, y, color);                                        
+                }                
+            }            
+        }
+    }
+
+    //------------------------------------------------------------------------------
+    void DrawTexturedTriangleV1(const std::array<glm::vec2, 3>& vertices, int32_t color)
+    {
+        // Vertex positions (integer screen coordinates)
+		FixedPointVector p0 { vertices[0].x, vertices[0].y, 0.0f };
+        FixedPointVector p1 { vertices[1].x, vertices[1].y, 0.0f };
+        FixedPointVector p2 { vertices[2].x, vertices[2].y, 0.0f };
+
+        // Compute bounding box
+        int32_t xMin = std::min({ p0.mX, p1.mX, p2.mX }) >> FixedPointVector::kShift;
+        int32_t yMin = std::min({ p0.mY, p1.mY, p2.mY }) >> FixedPointVector::kShift;
+
+        int32_t xMax = std::max({ p0.mX, p1.mX, p2.mX }) >> FixedPointVector::kShift;
+        int32_t yMax = std::max({ p0.mY, p1.mY, p2.mY }) >> FixedPointVector::kShift;
+
+        // Precompute edge function step deltas for rasterization
+        int32_t deltaEdge0X = (p1.mY - p2.mY) << FixedPointVector::kShift;
+        int32_t deltaEdge1X = (p2.mY - p0.mY) << FixedPointVector::kShift;
+        int32_t deltaEdge2X = (p0.mY - p1.mY) << FixedPointVector::kShift;
+
+        int32_t deltaEdge0Y = (p2.mX - p1.mX) << FixedPointVector::kShift;
+        int32_t deltaEdge1Y = (p0.mX - p2.mX) << FixedPointVector::kShift;
+        int32_t deltaEdge2Y = (p1.mX - p0.mX) << FixedPointVector::kShift;
+
+        // Compute edge function values for the top-left pixel
+        FixedPointVector topLeftPixel { xMin, yMin, 0 };
+        int32_t edge0 = GetDeterminant(p1, p2, topLeftPixel);
+        int32_t edge1 = GetDeterminant(p2, p0, topLeftPixel);
+        int32_t edge2 = GetDeterminant(p0, p1, topLeftPixel);
+
+        // Loop over the bounding box (rasterization)
+        for (int32_t y = yMin; y < yMax; y++)
+        {
+            int32_t e0 = edge0;
+            int32_t e1 = edge1;
+            int32_t e2 = edge2;
+
+            for (int32_t x = xMin; x < xMax; x++)
+            {
+                // Check if the pixel is inside the triangle
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                {
+                    mColorBuffer.SetPixel(x, y, color);
+                }
+
+                // Step edge functions in X direction
+                e0 += deltaEdge0X;
+                e1 += deltaEdge1X;
+                e2 += deltaEdge2X;
+            }
+
+            // Step edge functions in Y direction
+            edge0 += deltaEdge0Y;
+            edge1 += deltaEdge1Y;
+            edge2 += deltaEdge2Y;
+        }
+    }
+
+    float GetDeterminant(const glm::vec2& a, const glm::vec2& b, const glm::vec2 c)
+    {		
+		glm::vec2 ab = b - a;
+		glm::vec2 ac = c - a;
+
+		return ab.x * ac.y - ab.y * ac.x;        
+    }
+
+    int32_t GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
+    {
+        FixedPointVector ab = b - a;
+        FixedPointVector ac = c - a;
+
+        return ab.mX * ac.mY - ab.mY * ac.mX;        
+    }
+
+    glm::vec4 Rotate(glm::vec2 v, glm::vec2 center, float angle)
+    {
+        glm::vec4 rot;
+        v.x -= center.x;
+        v.y -= center.y;
+        rot.x = v.x * cos(angle) - v.y * sin(angle);
+        rot.y = v.x * sin(angle) + v.y * cos(angle);
+        rot.x += center.x;
+        rot.y += center.y;
+
+        return rot;
+    }
+
+    /*
     float EdgeCrossProduct(const glm::vec2& a, const glm::vec2& b, const glm::vec2 point)
     {
         return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
     }
 
-    fpm::fixed_24_8 GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
+    fpm::fixed_16_16 GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
     {
 		FixedPointVector ab = b - a;
 		FixedPointVector ac = c - a;
@@ -363,18 +515,7 @@ private:
         }
     }
 
-    glm::vec4 Rotate(glm::vec2 v, glm::vec2 center, float angle)
-    {
-        glm::vec4 rot;
-        v.x -= center.x;
-        v.y -= center.y;
-        rot.x = v.x * cos(angle) - v.y * sin(angle);
-        rot.y = v.x * sin(angle) + v.y * cos(angle);
-        rot.x += center.x;
-        rot.y += center.y;
 
-        return rot;
-    }
 
     bool IsFlatTopOrLeftEdge(const glm::ivec2& start, const glm::ivec2& end)
     {
@@ -384,6 +525,7 @@ private:
 
         return isFlatTopEdge || isLeftEdge;
     }
+    */
 
     ColorBuffer mColorBuffer;	
     float mAngle = 0.0f;
@@ -410,6 +552,8 @@ struct Transform
 //------------------------------------------------------------------------------
 class RendererApplication : public Application
 {
+    using FixedPoint = fpm::fixed_16_16;
+
 public:
 	RendererApplication(const AppConfig& config)
 		: Application(config)
@@ -420,7 +564,7 @@ public:
 
     virtual void OnCreate() override
     {
-        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("cube.obj"));
+        mMesh = CreateMeshFromOBJFile(ResolveAssetPath("drone.obj"));
 		mTrianglesToRender.reserve(mMesh->FaceCount());
 		mTexture = std::make_unique<Texture>(ResolveAssetPath("cube.png"));
 
@@ -489,6 +633,8 @@ public:
 
         for (size_t i = 0; i < mesh.FaceCount(); i++)
         {            
+            if (i != 4) { continue; }
+
             Triangle triangle = FaceToTriangle(*mMesh, mMesh->GetFace(i));
 
             for (size_t j = 0; j < 3; j++)
@@ -515,7 +661,7 @@ public:
 		mLineSegments.clear();
 
 		static Transform transform;
-		transform.mRotation.y += 1.0f;
+		//transform.mRotation.y += 1.0f;
 		transform.mScale = { 1.0f, 1.0f, 1.0f };
 		transform.mTranslation = { 0.0f, 0.0f, 4.0f };
 
@@ -533,6 +679,7 @@ public:
 		// Pre-process normals for smooth shading
 		std::unordered_map<size_t, std::vector<Face>> sharedVertexFaces;
 
+        /*
         Transform newTransform = transform;
 		newTransform.mScale *= 1.5f;
 		mWireframeTrianglesToRender = TransformMeshToScreen(*mMesh, newTransform, viewMatrix, windowSize);
@@ -546,7 +693,7 @@ public:
                 int32_t index = face.mVertexIndicies[j];
 				sharedVertexFaces[index].push_back(face);
 			}
-        }
+        }        
 
         for (const auto& [vertexIndex, faces] : sharedVertexFaces)
         {
@@ -569,11 +716,12 @@ public:
             }
             std::cout << std::endl;
         }
+        */
 
         // Build up a list of projected triangles to render
         for (size_t i = 0; i < mMesh->FaceCount(); i++)
         {            
-            const Face& face = mMesh->GetFace(i);                        
+            //const Face& face = mMesh->GetFace(i);                        
             Triangle triangle = FaceToTriangle(*mMesh, mMesh->GetFace(i));
             
             for (size_t j = 0; j < 3; j++)
@@ -581,6 +729,7 @@ public:
                 Vertex& vertexData = triangle.mVertices[j];
 				vertexData.mPoint = viewMatrix * modelMatrix * vertexData.mPoint;
 				
+                /*
 				// Average the normals of the shared vertices for smooth shading
 				const size_t vertexIndex = face.mVertexIndicies[j];                
                 
@@ -591,9 +740,8 @@ public:
                     averagedNormal += glm::normalize(ComputeFaceNormal(sharedTriangle));
 				}
 				averagedNormal = glm::normalize(averagedNormal);				
-                vertexData.mNormal = TransformNormal(modelMatrix, viewMatrix, averagedNormal);
-				
-                //vertexData.mNormal = mMesh->GetNormal(face.mNormalIndicies[j]);
+                vertexData.mNormal = TransformNormal(modelMatrix, viewMatrix, averagedNormal);			                
+                */
             }
 
             glm::vec3 faceNormal = ComputeFaceNormal(triangle);
@@ -658,30 +806,35 @@ public:
         {
             const auto& vertices = triangle.mVertices;
 
-            DrawTexturedTriangle(mColorBuffer, mZBuffer,
-                { vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
-                { vertices[0].mUV, vertices[1].mUV, vertices[2].mUV },
-                { 1.0f, 1.0f, 1.0f },
-                *mTexture);
+            DrawTexturedTriangle(
+				{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+				triangle.mColor
+			);
+
+            //DrawTexturedTriangle(mColorBuffer, mZBuffer,
+            //    { vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+            //    { vertices[0].mUV, vertices[1].mUV, vertices[2].mUV },
+            //    { 1.0f, 1.0f, 1.0f },
+            //    *mTexture);
 
 			//DrawWireframeTriangle(mColorBuffer,
 			//	{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
 			//	0xFFFFFFFF);
         }
 
-		for (Triangle& triangle : mWireframeTrianglesToRender)
-		{
-			const auto& vertices = triangle.mVertices;
+		//for (Triangle& triangle : mWireframeTrianglesToRender)
+		//{
+		//	const auto& vertices = triangle.mVertices;
 
-			DrawWireframeTriangle(mColorBuffer,
-				{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
-				0xFFFFFFFF);
-		}
+		//	DrawWireframeTriangle(mColorBuffer,
+		//		{ vertices[0].mPoint, vertices[1].mPoint, vertices[2].mPoint },
+		//		0xFFFFFFFF);
+		//}
 
-		for (const LineSegment& lineSegment : mLineSegments)
-		{
-			DrawLine(mColorBuffer, lineSegment.mStart, lineSegment.mEnd, 0xFF000000);
-		}
+		//for (const LineSegment& lineSegment : mLineSegments)
+		//{
+		//	DrawLine(mColorBuffer, lineSegment.mStart, lineSegment.mEnd, 0xFF000000);
+		//}
 
         auto end = std::chrono::high_resolution_clock::now();        
         std::chrono::duration<double, std::milli> duration = end - start;
@@ -690,7 +843,85 @@ public:
 		mColorBuffer.Render();
     }
 
-private:
+private:    
+    void DrawTexturedTriangle(const std::array<glm::vec2, 3>& vertices, int32_t color)
+    {
+        // Vertex positions (integer screen coordinates)
+        FixedPointVector p0{ vertices[0].x, vertices[0].y, 0.0f };
+        FixedPointVector p1{ vertices[1].x, vertices[1].y, 0.0f };
+        FixedPointVector p2{ vertices[2].x, vertices[2].y, 0.0f };
+
+        // Compute bounding box
+        int32_t xMin = std::min({ p0.mX, p1.mX, p2.mX }) >> FixedPointVector::kShift;
+        int32_t yMin = std::min({ p0.mY, p1.mY, p2.mY }) >> FixedPointVector::kShift;
+
+        int32_t xMax = std::max({ p0.mX, p1.mX, p2.mX }) >> FixedPointVector::kShift;
+        int32_t yMax = std::max({ p0.mY, p1.mY, p2.mY }) >> FixedPointVector::kShift;
+
+        // Precompute edge function step deltas for rasterization
+        int32_t deltaEdge0X = (p1.mY - p2.mY) << FixedPointVector::kShift;
+        int32_t deltaEdge1X = (p2.mY - p0.mY) << FixedPointVector::kShift;
+        int32_t deltaEdge2X = (p0.mY - p1.mY) << FixedPointVector::kShift;
+        int32_t deltaEdge0Y = (p2.mX - p1.mX) << FixedPointVector::kShift;
+        int32_t deltaEdge1Y = (p0.mX - p2.mX) << FixedPointVector::kShift;
+        int32_t deltaEdge2Y = (p1.mX - p0.mX) << FixedPointVector::kShift;
+
+        // Compute edge function values for the top-left pixel
+        FixedPointVector topLeftPixel{ xMin + 0.5f, yMin + 0.5f, 0.0f };
+        int32_t edge0 = GetDeterminant(p1, p2, topLeftPixel);
+        int32_t edge1 = GetDeterminant(p2, p0, topLeftPixel);
+        int32_t edge2 = GetDeterminant(p0, p1, topLeftPixel);
+
+        if (IsLeftOrTopEdge(p1, p2)) { edge0--; }
+        if (IsLeftOrTopEdge(p2, p0)) { edge1--; }
+        if (IsLeftOrTopEdge(p0, p1)) { edge2--; }
+
+        // Loop over the bounding box (rasterization)
+        for (int32_t y = yMin; y < yMax; y++)
+        {
+            int32_t e0 = edge0;
+            int32_t e1 = edge1;
+            int32_t e2 = edge2;
+
+            for (int32_t x = xMin; x < xMax; x++)
+            {
+                // Check if the pixel is inside the triangle
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0)
+                {
+                    mColorBuffer.SetPixel(x, y, color);
+                }
+
+                // Step edge functions in X direction
+                e0 += deltaEdge0X;
+                e1 += deltaEdge1X;
+                e2 += deltaEdge2X;
+            }
+
+            // Step edge functions in Y direction
+            edge0 += deltaEdge0Y;
+            edge1 += deltaEdge1Y;
+            edge2 += deltaEdge2Y;
+        }
+    }
+
+    int32_t GetDeterminant(const FixedPointVector& a, const FixedPointVector& b, const FixedPointVector& c)
+    {
+        FixedPointVector ab = b - a;
+        FixedPointVector ac = c - a;
+
+        return ab.mX * ac.mY - ab.mY * ac.mX;
+    }
+
+    bool IsLeftOrTopEdge(const FixedPointVector& start, const FixedPointVector& end)
+    {
+        const FixedPointVector edge = end - start;
+        
+        const bool isTopEdge = (edge.mY == 0) && (edge.mX > 0);
+        const bool isLeftEdge = (edge.mY < 0);
+
+        return (isTopEdge || isLeftEdge);
+    }
+
     glm::vec3 TransformNormal(const glm::mat4& model, const glm::mat4& view, const glm::vec3 normal)
     {
         const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(view * model)));
@@ -808,5 +1039,5 @@ std::unique_ptr<Application> CreateApplication()
 	config.mMonitorIndex = 1;
 	config.mWindowSize = { 800, 800 };
 
-	return std::make_unique<SimpleRendererApplication>(config);
+	return std::make_unique<RendererApplication>(config);
 }
